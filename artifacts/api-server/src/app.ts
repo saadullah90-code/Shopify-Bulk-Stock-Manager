@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { fileURLToPath } from "node:url";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -38,6 +39,16 @@ app.use("/api", (_req, res, next) => {
 });
 
 app.use("/api", router);
+// Railway uses one process for the real API and the built web client.
+// Replit development keeps its existing Vite/proxy routing unchanged.
+if (process.env.NODE_ENV === "production") {
+  const webRoot = fileURLToPath(new URL("../../bulk-stock-manager/dist/public/", import.meta.url));
+  app.use(express.static(webRoot, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".html")) res.setHeader("Cache-Control", "no-store");
+    },
+  }));
+}
 app.use((error: { type?: string; status?: number }, req: Request, res: Response, _next: NextFunction) => {
   if (error.type === "entity.too.large") {
     res.status(413).json({ error: "The request is too large. Use at most 100 order numbers." });
