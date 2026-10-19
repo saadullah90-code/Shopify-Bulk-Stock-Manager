@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Shopify Bulk Stock Manager"
+description = "A secure Shopify inventory tool for looking up orders, previewing affected variants, and carefully setting their stock to sold out or a chosen in-stock quantity."
+version = "1.0.0"
+id = "artifacts/bulk-stock-manager"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19706
+
+[services.development]
+run = "pnpm --filter @workspace/bulk-stock-manager run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bulk-stock-manager", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/bulk-stock-manager/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19706"
+BASE_PATH = "/"

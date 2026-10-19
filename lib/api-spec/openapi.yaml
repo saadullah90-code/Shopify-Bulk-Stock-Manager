@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: App password session
+  - name: shopify
+    description: Shopify inventory preview and updates
 paths:
   /healthz:
     get:
@@ -24,7 +28,198 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/session:
+    get:
+      operationId: getSession
+      tags: [auth]
+      summary: Check whether the current browser session is authenticated
+      security:
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Start a session with the configured app password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Authenticated
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Incorrect password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Missing app password configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: End the current session
+      security:
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Logged out
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
+  /shopify/locations:
+    get:
+      operationId: getLocations
+      tags: [shopify]
+      summary: List active Shopify inventory locations
+      security:
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Active inventory locations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /shopify/preview:
+    post:
+      operationId: previewOrders
+      tags: [shopify]
+      summary: Read orders and inventory without changing stock
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewInput"
+      responses:
+        "200":
+          description: A read-only inventory preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /shopify/apply:
+    post:
+      operationId: applyChanges
+      tags: [shopify]
+      summary: Apply only the variants included in a confirmed preview
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyInput"
+      responses:
+        "200":
+          description: Per-variant update outcomes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyResponse"
+        "400":
+          description: Invalid request or missing confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Preview inventory is stale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Preview expired or server restarted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: sbsm_session
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +228,212 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    SessionStatus:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+      required: [authenticated]
+    LoginInput:
+      type: object
+      properties:
+        password:
+          type: string
+          minLength: 1
+          maxLength: 512
+      required: [password]
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+      required: [id, name, active]
+    LocationsResponse:
+      type: object
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Location"
+      required: [locations]
+    PreviewInput:
+      type: object
+      properties:
+        orders:
+          type: string
+          maxLength: 20000
+        action:
+          type: string
+          enum: [sold_out, in_stock]
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        locationId:
+          type: string
+          minLength: 1
+          maxLength: 256
+      required: [orders, action, locationId]
+    OrderResult:
+      type: object
+      properties:
+        entered:
+          type: string
+        status:
+          type: string
+          enum: [found, not_found, ambiguous, inaccessible]
+        orderName:
+          type: ["string", "null"]
+        reason:
+          type: ["string", "null"]
+      required: [entered, status, orderName, reason]
+    VariantResult:
+      type: object
+      properties:
+        inventoryItemId:
+          type: string
+        productTitle:
+          type: string
+        variantTitle:
+          type: string
+        orderNumbers:
+          type: array
+          items:
+            type: string
+        currentQuantity:
+          type: ["integer", "null"]
+        tracked:
+          type: boolean
+        inventoryPolicy:
+          type: ["string", "null"]
+          enum: [DENY, CONTINUE, null]
+        targetQuantity:
+          type: ["integer", "null"]
+        eligible:
+          type: boolean
+        skipReason:
+          type: ["string", "null"]
+        requiresActivation:
+          type: boolean
+        trackingWillBeEnabled:
+          type: boolean
+        warning:
+          type: ["string", "null"]
+        updateStatus:
+          type: string
+          enum: [pending, success, failed, skipped]
+        updateMessage:
+          type: ["string", "null"]
+      required:
+        - inventoryItemId
+        - productTitle
+        - variantTitle
+        - orderNumbers
+        - currentQuantity
+        - tracked
+        - inventoryPolicy
+        - targetQuantity
+        - eligible
+        - skipReason
+        - requiresActivation
+        - trackingWillBeEnabled
+        - warning
+        - updateStatus
+        - updateMessage
+    Summary:
+      type: object
+      properties:
+        inputOrders:
+          type: integer
+        validOrders:
+          type: integer
+        variantsFound:
+          type: integer
+        successfulUpdates:
+          type: integer
+        failedUpdates:
+          type: integer
+        skippedItems:
+          type: integer
+      required:
+        - inputOrders
+        - validOrders
+        - variantsFound
+        - successfulUpdates
+        - failedUpdates
+        - skippedItems
+    PreviewResponse:
+      type: object
+      properties:
+        previewId:
+          type: string
+        action:
+          type: string
+          enum: [sold_out, in_stock]
+        locationId:
+          type: string
+        locationName:
+          type: string
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderResult"
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantResult"
+        summary:
+          $ref: "#/components/schemas/Summary"
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - previewId
+        - action
+        - locationId
+        - locationName
+        - orders
+        - variants
+        - summary
+        - createdAt
+        - expiresAt
+    ApplyInput:
+      type: object
+      properties:
+        previewId:
+          type: string
+          minLength: 1
+        confirmed:
+          type: boolean
+      required: [previewId, confirmed]
+    ApplyResponse:
+      type: object
+      properties:
+        previewId:
+          type: string
+        action:
+          type: string
+          enum: [sold_out, in_stock]
+        locationName:
+          type: string
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantResult"
+        summary:
+          $ref: "#/components/schemas/Summary"
+      required: [previewId, action, locationName, variants, summary]
 
