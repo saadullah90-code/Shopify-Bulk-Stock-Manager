@@ -1,2 +1,3 @@
 - [Shopify API cautions](shopify-inventory-api.md) — version-specific mutations, field permissions, and protected customer-name access need separate checks.
 - [Target Shopify store](target-shopify-store.md) — this inventory tool must manage the user's existing store, not a newly provisioned store.
+- [Railway hosting](railway-hosting.md) — verified Railway URL; distinguish this deployment from the separate Replit-published copy.
