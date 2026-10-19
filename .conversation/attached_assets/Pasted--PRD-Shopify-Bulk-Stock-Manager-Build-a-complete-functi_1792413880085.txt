@@ -1,0 +1,213 @@
+# PRD: Shopify Bulk Stock Manager
+
+Build a complete, functional, lightweight web application called **Shopify Bulk Stock Manager**.
+
+## 1. Main Goal
+
+Create a simple admin tool for my Shopify store that allows me to paste multiple Shopify order numbers, find all products/variants associated with those orders, and bulk update their inventory status to Sold Out or In Stock.
+
+Prioritize correctness, security, minimal dependencies, low AI token usage, and a working end-to-end application. Do not overengineer.
+
+## 2. Tech Stack
+
+- Use a lightweight Node.js + Express backend.
+- Use a simple responsive HTML, CSS, and vanilla JavaScript frontend.
+- Use Shopify Admin GraphQL API, with the API version configured as a constant and updated to a currently supported stable version.
+- Use environment variables for all credentials.
+- Do not use a database unless genuinely necessary.
+- Do not expose Shopify credentials in frontend JavaScript.
+- Do not install unnecessary packages or create unnecessary files.
+
+## 3. Shopify Configuration
+
+Read these environment variables from Replit Secrets:
+
+- `SHOPIFY_STORE_DOMAIN`
+- `SHOPIFY_ADMIN_ACCESS_TOKEN`
+
+Validate that both exist at server startup. If missing, show a clear setup error without exposing secrets.
+
+Authenticate Shopify Admin API requests on the server using the Admin API access token.
+
+Required scopes:
+- `read_orders`
+- `read_products`
+- `read_inventory`
+- `write_inventory`
+- `write_products` only if required by the chosen implementation.
+
+Use the minimum scopes necessary. If a required permission is missing, show a helpful error explaining which Shopify permission needs to be enabled.
+
+Never print, return, or log access tokens.
+
+## 4. User Interface
+
+Create a clean, professional, responsive dashboard with:
+
+- App title: Shopify Bulk Stock Manager
+- A large multiline text area for order numbers.
+- Placeholder example:
+  #1001
+  #1002
+  1003
+- Two clear action choices:
+  1. Sold Out
+  2. In Stock
+- A Preview Orders button.
+- A separate Apply Changes button.
+- A results table showing:
+  - Order number entered
+  - Order found or not found
+  - Product title
+  - Variant title
+  - Current inventory quantity
+  - Current tracking status
+  - Proposed action
+  - Update result
+- A summary showing total input orders, valid orders, products/variants found, successful updates, failed updates, and skipped items.
+- Loading indicators, clear error messages, and a success summary.
+- A confirmation dialog before applying any stock changes.
+- Disable the Apply Changes button until a successful preview is available.
+
+Do not create a complicated dashboard, user accounts, charts, billing, or unrelated features.
+
+## 5. Order Number Processing
+
+Accept multiple order numbers separated by new lines, commas, or spaces.
+
+Normalize the input by trimming whitespace and removing a leading `#` where appropriate. Deduplicate repeated order numbers.
+
+Find the corresponding Shopify orders through the Admin GraphQL API. Handle Shopify order pagination correctly when necessary.
+
+Search only the orders the user entered. Do not process all store orders.
+
+If an order cannot be found, show it as not found and do not update anything for that order.
+
+If the order number is ambiguous, inaccessible, or cannot be reliably matched, skip it and show an error. Never guess.
+
+Use the correct Shopify order identifier and distinguish order names/numbers from internal Shopify IDs.
+
+## 6. Find Products and Variants
+
+For each matching order, retrieve its line items and associated product variants and inventory item IDs.
+
+Group duplicate inventory items so the same variant is not updated repeatedly when it appears in multiple entered orders.
+
+Show the associated order numbers for each grouped variant.
+
+If a product or variant has been deleted, has no inventory item, or cannot be resolved, skip it and explain why.
+
+If different entered orders contain the same variant, update that variant only once per operation.
+
+## 7. Sold Out Action
+
+When the user selects Sold Out:
+
+- Preview the affected variants before making changes.
+- For each eligible inventory item, enable inventory tracking if it is currently disabled, using the correct Shopify product/variant inventory tracking mechanism.
+- Set the inventory quantity to exactly `0` at the selected Shopify location or locations.
+- Do not merely change the product title, tags, or product status.
+- Do not automatically change unrelated variants of the same product.
+- Do not archive or delete products.
+- Do not change prices, descriptions, images, or other product information.
+- Do not disable the product's sales channels.
+- Do not assume a product is sold out merely because its inventory tracking is disabled.
+- Show any inventory-policy limitations or location-related issues.
+
+## 8. In Stock Action
+
+When the user selects In Stock:
+
+- Preview the affected variants and current inventory.
+- Set eligible variants to a configurable positive quantity, defaulting to `10`.
+- Allow the user to change the target quantity before previewing/applying.
+- Enable inventory tracking if required.
+- Do not invent or restore historical inventory quantities.
+- Do not set stock to zero.
+- Do not update unrelated variants.
+- Clearly warn that this action sets an exact quantity and may overwrite existing stock.
+
+If multiple inventory locations are involved, make the location selection explicit. Do not silently change every location. Default to one clearly selected location and show its name.
+
+## 9. Preview and Confirmation
+
+The Preview Orders action must be read-only.
+
+Before applying changes, show:
+- Orders that were found and not found.
+- Exact product variants that will change.
+- Selected inventory location.
+- Current quantities.
+- Target quantities.
+- Variants that will be skipped and the reason.
+
+Require explicit confirmation before applying changes.
+
+If preview data becomes stale, refresh or invalidate it before applying.
+
+Never apply changes to variants that were not included in the confirmed preview.
+
+## 10. Shopify API Reliability
+
+- Use the supported Shopify Admin GraphQL API.
+- Handle HTTP errors, GraphQL errors, userErrors, missing data, and insufficient scopes.
+- Respect Shopify API rate limits and retry transient errors safely.
+- Use pagination correctly.
+- Never report success unless Shopify confirms the update.
+- After updating inventory, verify the resulting quantities where practical.
+- Avoid blind retries for operations that might have partially succeeded.
+- Display partial success and failure results accurately.
+- Use the appropriate Shopify inventory mutation for the configured API version.
+- Check required inventory tracking and location activation conditions before updating.
+- Follow Shopify's current requirements for inventory adjustments and absolute quantity setting.
+
+## 11. Security
+
+- Keep all API calls involving credentials on the server.
+- Never place secrets in client-side code, responses, URLs, or logs.
+- Add basic request validation and sensible request-size limits.
+- Protect state-changing endpoints against unauthorized access. Implement a simple app password using an `APP_PASSWORD` environment variable, with secure session handling and a login screen.
+- Do not store Shopify customer names, addresses, phone numbers, or other unnecessary personal data.
+- Do not expose full order customer details in the UI.
+- Provide a logout option.
+- If secure session handling requires an additional dependency, use a reputable minimal package.
+
+## 12. Testing and Acceptance Criteria
+
+Before declaring the app complete, test the following:
+
+1. Missing Shopify credentials produce a clear setup message.
+2. Invalid credentials show a safe authentication error.
+3. One valid order is found correctly.
+4. Multiple orders are parsed correctly.
+5. Duplicate order numbers are deduplicated.
+6. Unknown order numbers do not trigger updates.
+7. Duplicate variants across orders are updated only once.
+8. Preview never modifies inventory.
+9. Sold Out sets only the intended variants to zero at the selected location.
+10. In Stock sets only the intended variants to the selected positive quantity.
+11. Untracked inventory is handled safely.
+12. Missing variants and inactive inventory locations are reported.
+13. Partial failures are shown accurately.
+14. The UI does not claim success when Shopify returns an error.
+15. Credentials never appear in browser code or logs.
+16. The app works on desktop and mobile.
+17. No placeholder API calls or fake success messages remain.
+
+## 13. Deliverables
+
+Produce a working application with:
+- All required source files.
+- A clear `.env.example` containing variable names only, never real credentials.
+- A concise README explaining setup, required Shopify scopes, and how to run the application.
+- A short manual test checklist.
+
+Do not claim the app is complete until the Shopify integration, preview, and both stock actions work.
+
+## 14. Development Instructions
+
+First inspect the project and reuse any suitable existing files. Then implement the smallest complete solution.
+
+Do not repeatedly rewrite the same files. Do not add features outside this PRD. Do not stop at a UI mockup. Do not ask unnecessary questions; use safe defaults and clearly document anything that must be configured manually.
+
+At the end, summarize what works, what still requires configuration, and the exact steps needed to test the application safely. Never request that I paste API tokens into the chat.
