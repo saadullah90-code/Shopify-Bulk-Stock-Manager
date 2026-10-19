@@ -288,6 +288,10 @@ components:
           type: ["string", "null"]
         reason:
           type: ["string", "null"]
+        purchaserName:
+          type: ["string", "null"]
+        purchaserNameReason:
+          type: ["string", "null"]
       required: [entered, status, orderName, reason]
     InventoryLocationResult:
       type: object
@@ -388,6 +392,10 @@ components:
     PreviewResponse:
       type: object
       properties:
+        blockingIssues:
+          type: array
+          items:
+            type: string
         previewId:
           type: string
         action:
@@ -410,6 +418,7 @@ components:
           type: string
           format: date-time
       required:
+        - blockingIssues
         - previewId
         - action
         - orders

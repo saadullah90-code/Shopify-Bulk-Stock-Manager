@@ -97,6 +97,10 @@ router.post("/shopify/apply", async (req, res): Promise<void> => {
     res.status(409).json({ error: "This preview was already applied. Create a fresh preview." });
     return;
   }
+  if (stored.data.blockingIssues.length) {
+    res.status(409).json({ error: "This preview is blocked by missing Shopify location permission. No inventory or tracking was changed. Configure read_locations and create a fresh preview." });
+    return;
+  }
   stored.consumed = true;
   try {
     await assertShopifyPermissions();

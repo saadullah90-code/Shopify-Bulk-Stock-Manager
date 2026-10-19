@@ -74,13 +74,16 @@ export const PreviewOrdersBody = zod.object({
 })
 
 export const PreviewOrdersResponse = zod.object({
+  "blockingIssues": zod.array(zod.string()),
   "previewId": zod.string(),
   "action": zod.enum(['sold_out', 'in_stock']),
   "orders": zod.array(zod.object({
   "entered": zod.string(),
   "status": zod.enum(['found', 'not_found', 'ambiguous', 'inaccessible']),
   "orderName": zod.string().nullable(),
-  "reason": zod.string().nullable()
+  "reason": zod.string().nullable(),
+  "purchaserName": zod.string().nullish(),
+  "purchaserNameReason": zod.string().nullish()
 })),
   "variants": zod.array(zod.object({
   "inventoryItemId": zod.string(),

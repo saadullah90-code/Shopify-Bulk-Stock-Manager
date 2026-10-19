@@ -11,6 +11,7 @@ import type { Summary } from './summary';
 import type { VariantResult } from './variantResult';
 
 export interface PreviewResponse {
+  blockingIssues: string[];
   previewId: string;
   action: PreviewResponseAction;
   orders: OrderResult[];

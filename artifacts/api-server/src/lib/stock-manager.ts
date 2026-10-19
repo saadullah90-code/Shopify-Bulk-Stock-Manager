@@ -103,6 +103,7 @@ function locationResults(
       targetQuantity: willSet ? 0 : null,
       updateStatus: willSet ? "pending" : "skipped",
       updateMessage: action === "in_stock" ? "No quantity writes; inventory tracking will be disabled for the variant."
+        : location.isActive === null ? "Active status is unknown: location permission is required. No changes permitted."
         : !location.isActive ? "Inactive location: not currently sellable; no quantity write."
         : !level ? "Not stocked here. No inventory activation is needed for zero stock." : null,
     };
@@ -166,7 +167,7 @@ async function orderLines(id: string): Promise<Line[] | null> {
 
 export async function buildStockPreview(
   enteredOrders: ReturnType<typeof parseOrders>, action: StockAction,
-): Promise<{ orders: OrderResult[]; variants: VariantResult[] }> {
+): Promise<{ orders: OrderResult[]; variants: VariantResult[]; blockingIssues: string[] }> {
   await assertShopifyPermissions();
   const orders: OrderResult[] = [];
   const grouped = new Map<string, { line: Line; orderNumbers: Set<string> }>();
@@ -175,8 +176,32 @@ export async function buildStockPreview(
     const matches = await exactOrder(entered.number);
     const match = matches.length === 1 ? matches[0] : null;
     const lines = match ? await orderLines(match.id) : null;
+    let purchaserName: string | null = null;
+    let purchaserNameReason: string | null = null;
+    if (match) {
+      // Isolate protected customer fields: name access must never break order
+      // resolution or inventory previews. Never substitute a shipping recipient.
+      try {
+        const buyer = await shopifyGraphql<{
+          order: { customer: { firstName: string | null; lastName: string | null } | null } | null;
+        }>(`query OrderPurchaser($id: ID!) {
+          order(id: $id) { customer { firstName lastName } }
+        }`, { id: match.id });
+        const customer = buyer.order?.customer;
+        purchaserName = [customer?.firstName, customer?.lastName].filter(Boolean).join(" ").trim() || null;
+        if (!purchaserName) purchaserNameReason = "Shopify did not return a purchaser name for this order.";
+      } catch (error) {
+        purchaserNameReason = error instanceof ShopifyApiError && /read_customers/i.test(error.message)
+          ? "Shopify requires read_customers permission and approved customer-data access to show purchaser names."
+          : error instanceof ShopifyApiError && /not approved|PII|protected customer/i.test(error.message)
+            ? "Shopify has not approved this app to read customer names. Check protected customer-data access in your existing custom app."
+            : error instanceof ShopifyApiError ? `Purchaser name unavailable: ${error.message}`
+              : "Purchaser name could not be read from Shopify.";
+      }
+    }
     orders.push({
       entered: entered.entered, orderName: lines && match ? match.name : null,
+      purchaserName, purchaserNameReason,
       status: matches.length > 1 ? "ambiguous" : !match ? "not_found" : !lines ? "inaccessible" : "found",
       reason: matches.length > 1 ? "Multiple exact order matches; no updates are permitted."
         : !match ? "No exact match in the configured store. Older orders require approved read_all_orders access."
@@ -191,14 +216,27 @@ export async function buildStockPreview(
   }
   // Tracking is variant-wide. In Stock does not depend on location metadata
   // and must not require read_locations just to set tracked:false.
-  const locations = action === "sold_out" ? await discoverLocations() : [];
+  let locations: Location[] = [];
+  const blockingIssues: string[] = [];
+  if (action === "sold_out") {
+    try {
+      locations = await discoverLocations();
+    } catch (error) {
+      if (!(error instanceof ShopifyApiError)
+        || !/read_locations/i.test(error.message)
+        || !/permission|access denied/i.test(error.message)) throw error;
+      blockingIssues.push("Sold Out requires read_locations permission in your existing Shopify custom app. Add and approve this permission, update the token privately only if Shopify issues a replacement, then create a fresh preview. Active locations cannot yet be verified, so Apply is blocked.");
+    }
+  }
   const variants: VariantResult[] = [];
   for (const [id, group] of grouped) {
     const variant = group.line.variant;
-    const inventory = variant?.product && variant.inventoryItem ? await readInventory(id, action === "sold_out") : null;
+    const inventory = variant?.product && variant.inventoryItem
+      ? await readInventory(id, action === "sold_out" && blockingIssues.length === 0) : null;
     const entries = inventory ? locationResults(inventory, locations, action) : [];
     const unreadable = action === "sold_out" && entries.some((entry) => entry.active && entry.stocked && entry.currentQuantity === null);
-    const skipReason = !inventory ? "The variant, product, or inventory item was deleted or is inaccessible."
+    const skipReason = blockingIssues.length ? "Blocked: location access is required before Sold Out can change inventory."
+      : !inventory ? "The variant, product, or inventory item was deleted or is inaccessible."
       : unreadable ? "An active stocked location has an unknown available quantity. No safe comparison is possible." : null;
     const warnings = [
       action === "sold_out" && variant?.inventoryPolicy === "CONTINUE" ? "Shopify's CONTINUE policy still permits selling at zero. This tool does not change that policy." : null,
@@ -216,7 +254,7 @@ export async function buildStockPreview(
       updateStatus: skipReason ? "skipped" : "pending", updateMessage: skipReason,
     });
   }
-  return { orders, variants };
+  return { orders, variants, blockingIssues };
 }
 
 function sameSnapshot(item: VariantResult, current: Inventory): boolean {

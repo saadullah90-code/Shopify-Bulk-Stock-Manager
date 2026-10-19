@@ -14,4 +14,8 @@ export interface OrderResult {
   orderName: string | null;
   /** @nullable */
   reason: string | null;
+  /** @nullable */
+  purchaserName?: string | null;
+  /** @nullable */
+  purchaserNameReason?: string | null;
 }

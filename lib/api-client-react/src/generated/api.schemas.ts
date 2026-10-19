@@ -66,6 +66,10 @@ export interface OrderResult {
   orderName: string | null;
   /** @nullable */
   reason: string | null;
+  /** @nullable */
+  purchaserName?: string | null;
+  /** @nullable */
+  purchaserNameReason?: string | null;
 }
 
 export type InventoryLocationResultUpdateStatus = typeof InventoryLocationResultUpdateStatus[keyof typeof InventoryLocationResultUpdateStatus];
@@ -157,6 +161,7 @@ export const PreviewResponseAction = {
 } as const;
 
 export interface PreviewResponse {
+  blockingIssues: string[];
   previewId: string;
   action: PreviewResponseAction;
   orders: OrderResult[];

@@ -250,3 +250,38 @@ h1 { margin:0; font:700 clamp(32px, 4vw, 48px)/1.08 var(--display); letter-spaci
 @media (prefers-reduced-motion: reduce) {
   *, *:before, *:after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
 }
+
+/* Results readability */
+.order-list { grid-template-columns:1fr; }
+.order-row { flex-wrap:wrap; }
+.order-name { font-weight:500; }
+.purchaser { flex-basis:100%; color:#56615b; font-size:12px; overflow-wrap:anywhere; }
+.purchaser strong { color:var(--ink); }
+.order-row .blocked-text { flex-basis:100%; }
+.variant-list { display:grid; }
+.variant-card { padding:16px 18px; border-top:1px solid #ecece4; min-width:0; }
+.variant-card:first-child { border-top:0; }
+.variant-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.variant-id-block { min-width:0; overflow-wrap:anywhere; }
+.variant-title { font-size:13px; overflow-wrap:anywhere; }
+.variant-meta { display:flex; flex-wrap:wrap; gap:6px 28px; margin:12px 0 0; }
+.variant-meta dt { color:#899187; font:9px var(--mono); letter-spacing:.06em; text-transform:uppercase; }
+.variant-meta dd { margin:3px 0 0; font:11px var(--mono); overflow-wrap:anywhere; }
+.loc-list { list-style:none; margin:12px 0 0; padding:0; display:grid; gap:8px; }
+.loc-row { display:grid; gap:3px; padding:10px 12px; border-radius:5px; background:#f4f3ec; min-width:0; }
+.loc-main { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; }
+.loc-name { font-weight:700; font-size:12px; overflow-wrap:anywhere; }
+.loc-active { color:#8c948b; font:10px var(--mono); }
+.qty-value { white-space:normal; }
+.id-text { display:block; color:#8c948b; font:10px/1.5 var(--mono); overflow-wrap:anywhere; word-break:break-all; }
+.id-details { margin-top:10px; }
+.id-details summary { cursor:pointer; color:#7b857c; font:10px var(--mono); }
+.warning-text, .variant-card .blocked-text { max-width:none; margin:10px 0 0; overflow-wrap:anywhere; }
+.blocked-panel { margin:0 0 14px; padding:16px 18px; border:1px solid #e6c1b7; border-left:4px solid var(--red); border-radius:6px; background:var(--red-wash); color:#6f3329; }
+.blocked-title { margin:0 0 6px; font:700 14px var(--display); }
+.blocked-copy { margin:0 0 8px; font-size:12px; line-height:1.55; }
+.blocked-panel ul { margin:0; padding-left:18px; font-size:12px; line-height:1.55; overflow-wrap:anywhere; }
+@media (max-width:620px) {
+  .variant-head { flex-direction:column-reverse; }
+  .variant-card { padding:14px; }
+}

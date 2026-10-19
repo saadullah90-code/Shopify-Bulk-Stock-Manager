@@ -175,34 +175,48 @@ function orderRows(orders = []) {
       <span class="order-name">${esc(order.entered)}</span>
       <span class="order-right">${order.orderName ? `<span class="order-canonical">${esc(order.orderName)}</span>` : ''}
       <span class="status-pill ${status}">${text}</span></span>
+      <span class="purchaser">${order.purchaserName ? `Purchaser: <strong>${esc(order.purchaserName)}</strong>` : `Purchaser unavailable${order.purchaserNameReason ? `: ${esc(order.purchaserNameReason)}` : ''}`}</span>
       ${order.reason ? `<span class="blocked-text">${esc(order.reason)}</span>` : ''}
     </div>`;
   }).join('')}</div>`;
 }
 
-function variantRows(variants = [], applying = false) {
-  if (!variants.length) return `<tr><td colspan="5"><div class="empty-preview"><span class="empty-symbol">—</span><div><p class="empty-title">No variants to show</p><p class="empty-copy">No inventory variants were returned for this operation.</p></div></div></td></tr>`;
-  return variants.map((variant, index) => {
+function variantRows(variants = [], action = '') {
+  if (!variants.length) return `<div class="empty-preview"><span class="empty-symbol">—</span><div><p class="empty-title">No variants to show</p><p class="empty-copy">No inventory variants were returned for this operation.</p></div></div>`;
+  return `<div class="variant-list">${variants.map((variant, index) => {
     const status = variant.updateStatus || (variant.eligible ? 'pending' : 'skipped');
-    const stateLabel = {
-      pending: 'Ready', success: 'Updated', failed: 'Failed', skipped: 'Skipped',
-    }[status] || esc(status);
-    const locations = (variant.locations || []).map((location) => `<div style="margin-bottom:12px">
-      <span class="variant-title">${esc(location.name)}</span>
-      <span class="variant-sub">${esc(location.locationId)} · ${location.active === null ? 'Status not requested — tracking-only action' : location.active ? 'Active' : 'Inactive'}</span>
-      <span class="qty-value">${location.stocked ? esc(location.currentQuantity ?? 'Unknown') : 'Not stocked'} → ${location.targetQuantity === null ? 'No quantity write' : esc(location.targetQuantity)}</span>
-      <span class="variant-sub">${esc(location.updateStatus)}${location.updateMessage ? ` · ${esc(location.updateMessage)}` : ''}</span>
-    </div>`).join('') || '<span class="variant-sub">No location inventory returned.</span>';
+    const stateLabel = variant.skipReason?.startsWith('Blocked:')
+      ? 'Blocked' : { pending: 'Ready', success: 'Updated', failed: 'Failed', skipped: 'Skipped' }[status] || status;
+    const activeText = (location) => location.active === null || location.active === undefined
+      ? (action === 'sold_out' ? 'Active status UNKNOWN' : 'Active status not needed')
+      : location.active ? 'Active' : 'Inactive';
+    const locations = (variant.locations || []).map((location) => `<li class="loc-row">
+      <div class="loc-main"><span class="loc-name">${esc(location.name)}</span><span class="loc-active">${esc(activeText(location))}</span></div>
+      <span class="qty-value">${location.stocked ? esc(location.currentQuantity ?? 'Unknown') : 'Not stocked'} → ${location.targetQuantity === null ? 'quantity unchanged' : esc(location.targetQuantity)}</span>
+      ${location.updateStatus || location.updateMessage ? `<span class="variant-sub">${esc(location.updateStatus || '')}${location.updateMessage ? ` · ${esc(location.updateMessage)}` : ''}</span>` : ''}
+      <span class="id-text">${esc(location.locationId)}</span>
+    </li>`).join('') || '<li class="variant-sub">No location inventory returned.</li>';
     const orderNames = Array.isArray(variant.orderNumbers) ? variant.orderNumbers.join(', ') : '';
     const annotation = variant.updateMessage || variant.skipReason || variant.warning || '';
-    return `<tr data-testid="row-variant-${index}">
-      <td><span class="variant-title">${esc(variant.productTitle)}</span><span class="variant-sub">${esc(variant.variantTitle)} · ${esc(variant.productStatus || 'Unknown status')}</span><span class="variant-sub">${esc(variant.inventoryItemId)}</span></td>
-      <td><span class="variant-sub">${esc(orderNames || '—')}</span></td>
-      <td><span class="variant-sub">${variant.tracked ? 'On' : 'Off'} → ${variant.targetTracked ? 'On' : 'Off'}</span></td>
-      <td>${locations}</td>
-      <td><span class="status-pill ${esc(status)}">${esc(stateLabel)}</span>${annotation ? `<span class="${status === 'failed' || status === 'skipped' ? 'blocked-text' : 'warning-text'}">${esc(annotation)}</span>` : ''}${variant.warning && annotation !== variant.warning ? `<span class="warning-text">${esc(variant.warning)}</span>` : ''}</td>
-    </tr>`;
-  }).join('');
+    return `<article class="variant-card" data-testid="row-variant-${index}">
+      <div class="variant-head"><div class="variant-id-block"><span class="variant-title">${esc(variant.productTitle)}</span><span class="variant-sub">${esc(variant.variantTitle)} · ${esc(variant.productStatus || 'Unknown status')}</span></div>
+      <span class="status-pill ${esc(status)}">${esc(stateLabel)}</span></div>
+      <dl class="variant-meta"><div><dt>Orders</dt><dd>${esc(orderNames || '—')}</dd></div>
+      <div><dt>Tracking</dt><dd>${variant.tracked ? 'On' : 'Off'} → ${variant.targetTracked ? 'On' : 'Off'}</dd></div></dl>
+      <ul class="loc-list">${locations}</ul>
+      ${annotation ? `<p class="${status === 'failed' || status === 'skipped' ? 'blocked-text' : 'warning-text'}">${esc(annotation)}</p>` : ''}
+      ${variant.warning && annotation !== variant.warning ? `<p class="warning-text">${esc(variant.warning)}</p>` : ''}
+      <details class="id-details"><summary>Exact IDs</summary><span class="id-text">${esc(variant.inventoryItemId)}</span></details>
+    </article>`;
+  }).join('')}</div>`;
+}
+
+function blockedPanel(issues) {
+  return `<div class="blocked-panel" role="alert" data-testid="status-blocked">
+    <p class="blocked-title">Read-only preview. This action is blocked.</p>
+    <p class="blocked-copy">Nothing has been changed, and the missing Shopify permission has not been fixed. Review the matched orders below, then resolve the following and run a new preview.</p>
+    <ul>${issues.map((issue) => `<li>${esc(issue)}</li>`).join('')}</ul>
+  </div>`;
 }
 
 function resultsView() {
@@ -215,7 +229,9 @@ function resultsView() {
   const actionName = response.action === 'in_stock' ? 'Set in stock' : 'Set sold out';
   const variants = response.variants || [];
   const readyCount = variants.filter((item) => item.eligible && item.updateStatus !== 'skipped').length;
-  const applicable = readyCount > 0 && !applied;
+  const issues = Array.isArray(response.blockingIssues) ? response.blockingIssues : [];
+  const blocked = issues.length > 0;
+  const applicable = readyCount > 0 && !applied && !blocked;
   return `<section class="results" aria-live="polite" data-testid="section-results">
     ${applied ? `<div class="notice ${response.summary.failedUpdates > 0 ? 'error' : 'success'}" role="status" data-testid="status-apply-complete"><span class="notice-icon">${response.summary.failedUpdates > 0 ? '!' : '✓'}</span><span>${response.summary.failedUpdates > 0 ? 'Completed with issues' : 'Verification finished'}: ${esc(response.summary.successfulUpdates)} updated, ${esc(response.summary.failedUpdates)} failed, ${esc(response.summary.skippedItems)} skipped. Review every variant and location result below.</span></div>` : ''}
     <div class="results-header">
@@ -223,6 +239,7 @@ function resultsView() {
       <p class="results-sub">${esc(actionName)} · Automatic location discovery · ${esc(response.previewId)}</p></div>
       ${!applied && response.expiresAt ? `<span class="expiry">PREVIEW EXPIRES ${esc(formatDate(response.expiresAt))}</span>` : ''}
     </div>
+    ${!applied && blocked ? blockedPanel(issues) : ''}
     ${summaryPanel(response.summary)}
     <section class="panel result-panel">
       <div class="result-panel-head"><h3>Order resolution</h3><span class="result-count">${(response.orders || state.preview?.orders || []).length} checked</span></div>
@@ -230,12 +247,9 @@ function resultsView() {
     </section>
     <section class="panel result-panel" style="margin-top:14px">
       <div class="result-panel-head"><h3>Variants ${applied ? 'processed' : 'in scope'}</h3><span class="result-count">${variants.length} ${variants.length === 1 ? 'item' : 'items'}</span></div>
-      <div class="variant-wrap"><table class="variant-table">
-        <thead><tr><th>Product / variant</th><th>Orders</th><th>Tracking: current → target</th><th>Locations: current → target</th><th>${applied ? 'Result' : 'Eligibility'}</th></tr></thead>
-        <tbody>${variantRows(variants, applied)}</tbody>
-      </table></div>
+      ${variantRows(variants, response.action)}
     </section>
-    ${!applied ? `<label class="confirm-box">
+    ${!applied && blocked ? '' : !applied ? `<label class="confirm-box">
       <input id="confirm-change" type="checkbox" ${state.confirmed ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="checkbox-confirm">
       <span class="confirm-label">I reviewed this preview and authorize these inventory changes.
         <span class="confirm-detail">${readyCount} eligible variant${readyCount === 1 ? '' : 's'}. ${response.action === 'sold_out' ? 'Enable tracking and zero every active stocked location shown.' : 'Disable tracking for these variants; do not write quantities.'} Skipped items will not be updated.</span>
@@ -363,6 +377,7 @@ async function preview() {
 
 async function applyChanges() {
   if (!state.preview?.previewId || !state.confirmed || state.busy) return;
+  if ((state.preview.blockingIssues || []).length) return;
   if (Date.parse(state.preview.expiresAt) <= Date.now()) {
     clearOperation();
     state.error = 'The preview expired. Create a fresh preview before applying.';
@@ -446,7 +461,7 @@ root.addEventListener('change', (event) => {
   } else if (target.id === 'confirm-change') {
     state.confirmed = target.checked;
     const applyButton = root.querySelector('[data-action="apply"]');
-    if (applyButton) applyButton.disabled = !state.confirmed || !state.preview || state.busy !== '' || !(state.preview.variants || []).some((item) => item.eligible && item.updateStatus !== 'skipped');
+    if (applyButton) applyButton.disabled = (state.preview?.blockingIssues || []).length > 0 || !state.confirmed || !state.preview || state.busy !== '' || !(state.preview.variants || []).some((item) => item.eligible && item.updateStatus !== 'skipped');
   }
 });
 
