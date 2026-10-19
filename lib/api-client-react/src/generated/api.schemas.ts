@@ -81,7 +81,11 @@ export const InventoryLocationResultUpdateStatus = {
 export interface InventoryLocationResult {
   locationId: string;
   name: string;
-  active: boolean;
+  /**
+     * Null when active status is not required or requested for a tracking-only action.
+     * @nullable
+     */
+  active: boolean | null;
   stocked: boolean;
   /** @nullable */
   currentQuantity: number | null;

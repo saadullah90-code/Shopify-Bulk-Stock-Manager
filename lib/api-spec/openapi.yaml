@@ -297,7 +297,8 @@ components:
         name:
           type: string
         active:
-          type: boolean
+          type: ["boolean", "null"]
+          description: Null when active status is not required or requested for a tracking-only action.
         stocked:
           type: boolean
         currentQuantity:

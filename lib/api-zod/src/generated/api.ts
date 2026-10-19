@@ -94,7 +94,7 @@ export const PreviewOrdersResponse = zod.object({
   "locations": zod.array(zod.object({
   "locationId": zod.string(),
   "name": zod.string(),
-  "active": zod.boolean(),
+  "active": zod.boolean().nullable().describe('Null when active status is not required or requested for a tracking-only action.'),
   "stocked": zod.boolean(),
   "currentQuantity": zod.number().int().nullable(),
   "targetQuantity": zod.number().int().nullable(),
@@ -146,7 +146,7 @@ export const ApplyChangesResponse = zod.object({
   "locations": zod.array(zod.object({
   "locationId": zod.string(),
   "name": zod.string(),
-  "active": zod.boolean(),
+  "active": zod.boolean().nullable().describe('Null when active status is not required or requested for a tracking-only action.'),
   "stocked": zod.boolean(),
   "currentQuantity": zod.number().int().nullable(),
   "targetQuantity": zod.number().int().nullable(),

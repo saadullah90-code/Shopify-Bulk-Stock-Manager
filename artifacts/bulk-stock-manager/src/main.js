@@ -189,7 +189,7 @@ function variantRows(variants = [], applying = false) {
     }[status] || esc(status);
     const locations = (variant.locations || []).map((location) => `<div style="margin-bottom:12px">
       <span class="variant-title">${esc(location.name)}</span>
-      <span class="variant-sub">${esc(location.locationId)} · ${location.active ? 'Active' : 'Inactive'}</span>
+      <span class="variant-sub">${esc(location.locationId)} · ${location.active === null ? 'Status not requested — tracking-only action' : location.active ? 'Active' : 'Inactive'}</span>
       <span class="qty-value">${location.stocked ? esc(location.currentQuantity ?? 'Unknown') : 'Not stocked'} → ${location.targetQuantity === null ? 'No quantity write' : esc(location.targetQuantity)}</span>
       <span class="variant-sub">${esc(location.updateStatus)}${location.updateMessage ? ` · ${esc(location.updateMessage)}` : ''}</span>
     </div>`).join('') || '<span class="variant-sub">No location inventory returned.</span>';

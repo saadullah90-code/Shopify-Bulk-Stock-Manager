@@ -100,11 +100,11 @@ router.post("/shopify/apply", async (req, res): Promise<void> => {
   stored.consumed = true;
   try {
     await assertShopifyPermissions();
-    // Revalidate full location access and metadata before any mutation.
-    const locations = await discoverLocations();
+    // Only Sold Out writes location quantities. In Stock changes tracking only.
+    const locations = stored.data.action === "sold_out" ? await discoverLocations() : [];
     const variants = [];
     for (const item of stored.data.variants) {
-      const changedLocation = item.locations.some((entry) => {
+      const changedLocation = stored.data.action === "sold_out" && item.locations.some((entry) => {
         const current = locations.find((location) => location.id === entry.locationId);
         return !current || current.isActive !== entry.active;
       });

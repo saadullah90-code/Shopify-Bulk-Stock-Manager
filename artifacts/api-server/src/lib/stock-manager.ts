@@ -5,7 +5,7 @@ import { assertShopifyPermissions, ShopifyApiError, shopifyGraphql, shopifyMutat
 export type StockAction = "sold_out" | "in_stock";
 interface PageInfo { hasNextPage: boolean; endCursor: string | null }
 interface Connection<T> { nodes: T[]; pageInfo: PageInfo }
-interface Location { id: string; name: string; isActive: boolean }
+interface Location { id: string; name: string; isActive: boolean | null }
 interface Level {
   location: Location;
   quantities: Array<{ name: string; quantity: number }>;
@@ -46,7 +46,7 @@ export async function discoverLocations(): Promise<Location[]> {
   return locations;
 }
 
-export async function readInventory(id: string): Promise<Inventory | null> {
+export async function readInventory(id: string, locationDetails = true): Promise<Inventory | null> {
   const levels: Level[] = [];
   let after: string | null = null;
   let tracked: boolean | undefined;
@@ -59,7 +59,7 @@ export async function readInventory(id: string): Promise<Inventory | null> {
           id tracked
           inventoryLevels(first: 100, after: $after, includeInactive: true) {
             nodes {
-              location { id name isActive }
+              location { id ${locationDetails ? "name isActive" : ""} }
               quantities(names: ["available"]) { name quantity }
             }
             pageInfo { hasNextPage endCursor }
@@ -71,7 +71,15 @@ export async function readInventory(id: string): Promise<Inventory | null> {
       throw new ShopifyApiError("Tracking changed while inventory pages were being read. Preview again.");
     }
     tracked = data.inventoryItem.tracked;
-    levels.push(...data.inventoryItem.inventoryLevels.nodes);
+    levels.push(...data.inventoryItem.inventoryLevels.nodes.map((level) => ({
+      ...level,
+      location: {
+        id: level.location.id,
+        name: locationDetails ? level.location.name
+          : `Location ${level.location.id.split("/").pop()} (name not requested)`,
+        isActive: locationDetails ? level.location.isActive : null,
+      },
+    })));
     after = nextPage(data.inventoryItem.inventoryLevels.pageInfo, after);
   } while (after);
   return { id, tracked: tracked === true, levels };
@@ -181,11 +189,13 @@ export async function buildStockPreview(
       else grouped.set(key, { line, orderNumbers: new Set([entered.entered]) });
     }
   }
-  const locations = await discoverLocations();
+  // Tracking is variant-wide. In Stock does not depend on location metadata
+  // and must not require read_locations just to set tracked:false.
+  const locations = action === "sold_out" ? await discoverLocations() : [];
   const variants: VariantResult[] = [];
   for (const [id, group] of grouped) {
     const variant = group.line.variant;
-    const inventory = variant?.product && variant.inventoryItem ? await readInventory(id) : null;
+    const inventory = variant?.product && variant.inventoryItem ? await readInventory(id, action === "sold_out") : null;
     const entries = inventory ? locationResults(inventory, locations, action) : [];
     const unreadable = action === "sold_out" && entries.some((entry) => entry.active && entry.stocked && entry.currentQuantity === null);
     const skipReason = !inventory ? "The variant, product, or inventory item was deleted or is inaccessible."
@@ -194,7 +204,7 @@ export async function buildStockPreview(
       action === "sold_out" && variant?.inventoryPolicy === "CONTINUE" ? "Shopify's CONTINUE policy still permits selling at zero. This tool does not change that policy." : null,
       action === "in_stock" ? "Disabling tracking does not publish products or change sales channels. Availability remains subject to product status and Shopify settings; quantities are not restored or invented." : null,
       variant?.product?.status !== "ACTIVE" ? `Product status is ${variant?.product?.status ?? "unknown"}; availability is not guaranteed.` : null,
-      entries.some((entry) => !entry.active && entry.stocked) ? "Inactive location quantities are shown and skipped. They are not currently sellable." : null,
+      entries.some((entry) => entry.active === false && entry.stocked) ? "Inactive location quantities are shown and skipped. They are not currently sellable." : null,
     ].filter(Boolean).join(" ");
     variants.push({
       inventoryItemId: id, productTitle: variant?.product?.title ?? group.line.title,
@@ -267,9 +277,11 @@ export async function applyStockVariant(
   let changed = false;
   const errors: string[] = [];
   try {
-    const initial = await readInventory(item.inventoryItemId);
+    const initial = await readInventory(item.inventoryItemId, action === "sold_out");
     if (!initial) throw new ShopifyApiError("Inventory item no longer exists. Preview again.");
-    if (!sameSnapshot(item, initial)) throw new ShopifyApiError("Inventory or tracking changed after preview. No update was attempted; create a fresh preview.");
+    if (action === "sold_out" ? !sameSnapshot(item, initial) : item.tracked !== initial.tracked) {
+      throw new ShopifyApiError("Inventory or tracking changed after preview. No update was attempted; create a fresh preview.");
+    }
     const targetTracked = action === "sold_out";
     if (initial.tracked !== targetTracked) {
       await setTracking(item.inventoryItemId, targetTracked);
@@ -307,7 +319,7 @@ export async function applyStockVariant(
         }
       }
     }
-    const verified = await readInventory(item.inventoryItemId);
+    const verified = await readInventory(item.inventoryItemId, action === "sold_out");
     if (!verified || verified.tracked !== targetTracked) {
       throw new ShopifyApiError("Shopify did not verify the target tracking state.");
     }
@@ -315,11 +327,12 @@ export async function applyStockVariant(
     // The final read includes every inventory-level page, not just locations written.
     for (const level of verified.levels) {
       if (!result.locations.some((location) => location.locationId === level.location.id)) {
-        errors.push("A new inventory location appeared during verification. Preview again.");
+        if (action === "sold_out") errors.push("A new inventory location appeared during verification. Preview again.");
         result.locations.push({
           locationId: level.location.id, name: level.location.name, active: level.location.isActive,
           stocked: true, currentQuantity: available(level), targetQuantity: null,
-          updateStatus: "failed", updateMessage: "New location was not changed; review a fresh preview.",
+          updateStatus: action === "sold_out" ? "failed" : "skipped",
+          updateMessage: "New location was not changed; no quantity write was performed there.",
         });
       }
     }

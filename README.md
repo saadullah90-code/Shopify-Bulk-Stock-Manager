@@ -45,7 +45,7 @@ Useful check: `pnpm run typecheck`.
 
 **Sold Out** enables tracking when it is off and sets available inventory to exactly **0** at every active stocked location, including positive or negative quantities. All inventory-level pages are read again afterward, and any nonzero/unknown available quantity at any active stocked location prevents a success result. Unstocked locations are not activated merely to create zeros.
 
-**In Stock** disables tracking with `inventoryItemUpdate`, verifies `tracked: false`, and never calls a quantity mutation. It does not invent or restore previous quantities. Already-disabled tracking is reported as skipped/no change.
+**In Stock** disables tracking with `inventoryItemUpdate`, verifies `tracked: false`, and never calls a quantity mutation. It does not invent or restore previous quantities. Already-disabled tracking is reported as skipped/no change. This tracking-only action does not request location names/status or require `read_locations`; the preview shows actual location IDs and quantities, with location active status explicitly unrequested. Sold Out still requires full location-detail access.
 
 Only exact variants from the entered orders are touched. Inactive locations are listed and skipped because they are not currently sellable; their quantities are not erased. A location changing active status after preview invalidates that variant's operation. Partial failures remain failures and show what was confirmed before the error.
 
