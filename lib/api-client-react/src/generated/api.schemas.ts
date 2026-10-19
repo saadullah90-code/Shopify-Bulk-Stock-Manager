@@ -47,16 +47,6 @@ export interface PreviewInput {
   /** @maxLength 20000 */
   orders: string;
   action: PreviewInputAction;
-  /**
-     * @minimum 1
-     * @maximum 1000000
-     */
-  quantity?: number;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  locationId: string;
 }
 
 export type OrderResultStatus = typeof OrderResultStatus[keyof typeof OrderResultStatus];
@@ -76,6 +66,30 @@ export interface OrderResult {
   orderName: string | null;
   /** @nullable */
   reason: string | null;
+}
+
+export type InventoryLocationResultUpdateStatus = typeof InventoryLocationResultUpdateStatus[keyof typeof InventoryLocationResultUpdateStatus];
+
+
+export const InventoryLocationResultUpdateStatus = {
+  pending: 'pending',
+  success: 'success',
+  failed: 'failed',
+  skipped: 'skipped',
+} as const;
+
+export interface InventoryLocationResult {
+  locationId: string;
+  name: string;
+  active: boolean;
+  stocked: boolean;
+  /** @nullable */
+  currentQuantity: number | null;
+  /** @nullable */
+  targetQuantity: number | null;
+  updateStatus: InventoryLocationResultUpdateStatus;
+  /** @nullable */
+  updateMessage: string | null;
 }
 
 /**
@@ -105,17 +119,15 @@ export interface VariantResult {
   variantTitle: string;
   orderNumbers: string[];
   /** @nullable */
-  currentQuantity: number | null;
+  productStatus: string | null;
   tracked: boolean;
   /** @nullable */
   inventoryPolicy: VariantResultInventoryPolicy;
-  /** @nullable */
-  targetQuantity: number | null;
+  targetTracked: boolean;
+  locations: InventoryLocationResult[];
   eligible: boolean;
   /** @nullable */
   skipReason: string | null;
-  requiresActivation: boolean;
-  trackingWillBeEnabled: boolean;
   /** @nullable */
   warning: string | null;
   updateStatus: VariantResultUpdateStatus;
@@ -143,8 +155,6 @@ export const PreviewResponseAction = {
 export interface PreviewResponse {
   previewId: string;
   action: PreviewResponseAction;
-  locationId: string;
-  locationName: string;
   orders: OrderResult[];
   variants: VariantResult[];
   summary: Summary;
@@ -169,7 +179,6 @@ export const ApplyResponseAction = {
 export interface ApplyResponse {
   previewId: string;
   action: ApplyResponseAction;
-  locationName: string;
   variants: VariantResult[];
   summary: Summary;
 }

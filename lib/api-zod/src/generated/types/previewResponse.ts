@@ -13,8 +13,6 @@ import type { VariantResult } from './variantResult';
 export interface PreviewResponse {
   previewId: string;
   action: PreviewResponseAction;
-  locationId: string;
-  locationName: string;
   orders: OrderResult[];
   variants: VariantResult[];
   summary: Summary;

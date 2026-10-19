@@ -275,15 +275,7 @@ components:
         action:
           type: string
           enum: [sold_out, in_stock]
-        quantity:
-          type: integer
-          minimum: 1
-          maximum: 1000000
-        locationId:
-          type: string
-          minLength: 1
-          maxLength: 256
-      required: [orders, action, locationId]
+      required: [orders, action]
     OrderResult:
       type: object
       properties:
@@ -297,6 +289,27 @@ components:
         reason:
           type: ["string", "null"]
       required: [entered, status, orderName, reason]
+    InventoryLocationResult:
+      type: object
+      properties:
+        locationId:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+        stocked:
+          type: boolean
+        currentQuantity:
+          type: ["integer", "null"]
+        targetQuantity:
+          type: ["integer", "null"]
+        updateStatus:
+          type: string
+          enum: [pending, success, failed, skipped]
+        updateMessage:
+          type: ["string", "null"]
+      required: [locationId, name, active, stocked, currentQuantity, targetQuantity, updateStatus, updateMessage]
     VariantResult:
       type: object
       properties:
@@ -310,23 +323,23 @@ components:
           type: array
           items:
             type: string
-        currentQuantity:
-          type: ["integer", "null"]
+        productStatus:
+          type: ["string", "null"]
         tracked:
           type: boolean
         inventoryPolicy:
           type: ["string", "null"]
           enum: [DENY, CONTINUE, null]
-        targetQuantity:
-          type: ["integer", "null"]
+        targetTracked:
+          type: boolean
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryLocationResult"
         eligible:
           type: boolean
         skipReason:
           type: ["string", "null"]
-        requiresActivation:
-          type: boolean
-        trackingWillBeEnabled:
-          type: boolean
         warning:
           type: ["string", "null"]
         updateStatus:
@@ -339,14 +352,13 @@ components:
         - productTitle
         - variantTitle
         - orderNumbers
-        - currentQuantity
+        - productStatus
         - tracked
         - inventoryPolicy
-        - targetQuantity
+        - targetTracked
+        - locations
         - eligible
         - skipReason
-        - requiresActivation
-        - trackingWillBeEnabled
         - warning
         - updateStatus
         - updateMessage
@@ -380,10 +392,6 @@ components:
         action:
           type: string
           enum: [sold_out, in_stock]
-        locationId:
-          type: string
-        locationName:
-          type: string
         orders:
           type: array
           items:
@@ -403,8 +411,6 @@ components:
       required:
         - previewId
         - action
-        - locationId
-        - locationName
         - orders
         - variants
         - summary
@@ -427,13 +433,11 @@ components:
         action:
           type: string
           enum: [sold_out, in_stock]
-        locationName:
-          type: string
         variants:
           type: array
           items:
             $ref: "#/components/schemas/VariantResult"
         summary:
           $ref: "#/components/schemas/Summary"
-      required: [previewId, action, locationName, variants, summary]
+      required: [previewId, action, variants, summary]
 

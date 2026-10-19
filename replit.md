@@ -37,13 +37,14 @@ A private order-based tool for previewing and applying exact Shopify inventory q
 
 - Use one API instance because sessions and previews intentionally avoid a database. Restarts invalidate both.
 - A preview is read-only, short-lived, session-bound, and one-use. The apply endpoint accepts only its server-owned preview ID, never arbitrary client inventory IDs.
-- Enabling tracking is variant-level; quantity changes and activation are limited to the explicitly selected location.
-- Shopify's CONTINUE policy and stock at other locations can keep products purchasable even when selected-location inventory is zero. Do not silently alter policy.
+- Sold Out enables tracking and zeros every active stocked inventory location for the confirmed variants. Discover locations automatically, include inactive locations in the review, and verify all inventory-level pages after updates. Never activate unstocked sites merely to create zeros.
+- In Stock disables tracking only. Never invent, restore, or write quantities for In Stock. There is no manual location dropdown or quantity input.
+- Inactive locations are shown and skipped, not reactivated. Shopify's CONTINUE policy can permit selling at zero; disabling tracking does not change product status or channel availability. Do not silently change policy, status, or channels.
 
 ## Product
 
 - Parse/deduplicate numeric order numbers, resolve exact Shopify order names, paginate line items, and group duplicate inventory items.
-- Preview Sold Out (`0`) or In Stock (positive quantity, default `10`).
+- Preview Sold Out (tracking on, all active stocked locations to `0`) or In Stock (tracking off, no quantity writes).
 - Require explicit confirmation, detect stale inventory, verify updates, and report partial results.
 
 ## User preferences
@@ -54,7 +55,7 @@ A private order-based tool for previewing and applying exact Shopify inventory q
 ## Gotchas
 
 - Re-run API codegen after editing the OpenAPI contract.
-- No live inventory test should run without explicit authorization for the test order, location, and target quantities.
+- No live inventory test should run without explicit authorization for the test order, action, and full scope of changes.
 - Do not call the app complete until its live preview and both stock actions have been verified.
 
 ## Pointers

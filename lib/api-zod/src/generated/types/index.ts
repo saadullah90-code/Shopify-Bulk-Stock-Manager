@@ -11,6 +11,8 @@ export * from './applyResponse';
 export * from './applyResponseAction';
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './inventoryLocationResult';
+export * from './inventoryLocationResultUpdateStatus';
 export * from './location';
 export * from './locationsResponse';
 export * from './loginInput';

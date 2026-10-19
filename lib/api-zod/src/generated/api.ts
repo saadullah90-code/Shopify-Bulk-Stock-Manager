@@ -66,24 +66,16 @@ export const GetLocationsResponse = zod.object({
  */
 export const previewOrdersBodyOrdersMax = 20000;
 
-export const previewOrdersBodyQuantityMax = 1000000;
-
-export const previewOrdersBodyLocationIdMax = 256;
-
 
 
 export const PreviewOrdersBody = zod.object({
   "orders": zod.string().max(previewOrdersBodyOrdersMax),
-  "action": zod.enum(['sold_out', 'in_stock']),
-  "quantity": zod.number().int().min(1).max(previewOrdersBodyQuantityMax).optional(),
-  "locationId": zod.string().min(1).max(previewOrdersBodyLocationIdMax)
+  "action": zod.enum(['sold_out', 'in_stock'])
 })
 
 export const PreviewOrdersResponse = zod.object({
   "previewId": zod.string(),
   "action": zod.enum(['sold_out', 'in_stock']),
-  "locationId": zod.string(),
-  "locationName": zod.string(),
   "orders": zod.array(zod.object({
   "entered": zod.string(),
   "status": zod.enum(['found', 'not_found', 'ambiguous', 'inaccessible']),
@@ -95,14 +87,22 @@ export const PreviewOrdersResponse = zod.object({
   "productTitle": zod.string(),
   "variantTitle": zod.string(),
   "orderNumbers": zod.array(zod.string()),
-  "currentQuantity": zod.number().int().nullable(),
+  "productStatus": zod.string().nullable(),
   "tracked": zod.boolean(),
   "inventoryPolicy": zod.union([zod.literal('DENY'),zod.literal('CONTINUE'),zod.literal(null)]).nullable(),
+  "targetTracked": zod.boolean(),
+  "locations": zod.array(zod.object({
+  "locationId": zod.string(),
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "stocked": zod.boolean(),
+  "currentQuantity": zod.number().int().nullable(),
   "targetQuantity": zod.number().int().nullable(),
+  "updateStatus": zod.enum(['pending', 'success', 'failed', 'skipped']),
+  "updateMessage": zod.string().nullable()
+})),
   "eligible": zod.boolean(),
   "skipReason": zod.string().nullable(),
-  "requiresActivation": zod.boolean(),
-  "trackingWillBeEnabled": zod.boolean(),
   "warning": zod.string().nullable(),
   "updateStatus": zod.enum(['pending', 'success', 'failed', 'skipped']),
   "updateMessage": zod.string().nullable()
@@ -134,20 +134,27 @@ export const ApplyChangesBody = zod.object({
 export const ApplyChangesResponse = zod.object({
   "previewId": zod.string(),
   "action": zod.enum(['sold_out', 'in_stock']),
-  "locationName": zod.string(),
   "variants": zod.array(zod.object({
   "inventoryItemId": zod.string(),
   "productTitle": zod.string(),
   "variantTitle": zod.string(),
   "orderNumbers": zod.array(zod.string()),
-  "currentQuantity": zod.number().int().nullable(),
+  "productStatus": zod.string().nullable(),
   "tracked": zod.boolean(),
   "inventoryPolicy": zod.union([zod.literal('DENY'),zod.literal('CONTINUE'),zod.literal(null)]).nullable(),
+  "targetTracked": zod.boolean(),
+  "locations": zod.array(zod.object({
+  "locationId": zod.string(),
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "stocked": zod.boolean(),
+  "currentQuantity": zod.number().int().nullable(),
   "targetQuantity": zod.number().int().nullable(),
+  "updateStatus": zod.enum(['pending', 'success', 'failed', 'skipped']),
+  "updateMessage": zod.string().nullable()
+})),
   "eligible": zod.boolean(),
   "skipReason": zod.string().nullable(),
-  "requiresActivation": zod.boolean(),
-  "trackingWillBeEnabled": zod.boolean(),
   "warning": zod.string().nullable(),
   "updateStatus": zod.enum(['pending', 'success', 'failed', 'skipped']),
   "updateMessage": zod.string().nullable()

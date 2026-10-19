@@ -6,13 +6,8 @@ const state = {
   authenticated: null,
   sessionError: '',
   loginError: '',
-  locations: [],
-  locationsError: '',
-  locationsLoading: false,
   orderText: '',
   action: 'sold_out',
-  quantity: '10',
-  locationId: '',
   preview: null,
   applyResult: null,
   error: '',
@@ -39,7 +34,6 @@ async function request(path, options = {}) {
     if (response.status === 401 && path !== '/api/auth/login') {
       state.authenticated = false;
       state.sessionError = 'Your session expired. Sign in again.';
-      state.locations = [];
       clearOperation();
     }
     const error = new Error(data?.error || `Request failed (${response.status}).`);
@@ -88,7 +82,7 @@ function loginView() {
       <div class="story-index">01 / OPERATIONS TOOL</div>
       <div class="story-main">
         <h1>Stock changes,<br><em>without guesswork.</em></h1>
-        <p>Look up the orders. Review every variant. Then make one deliberate change at the location you choose.</p>
+        <p>Look up the orders. Review every variant and its automatically discovered locations. Confirm before changing stock or tracking.</p>
       </div>
       <div class="story-footer"><span>ORDER-LED</span><span>PREVIEW FIRST</span><span>OWNER ACCESS</span></div>
     </section>
@@ -124,15 +118,6 @@ function steps() {
   </ol>`;
 }
 
-function locationOptions() {
-  const active = state.locations.filter((location) => location.active);
-  if (state.locationsLoading) return '<option value="">Loading locations…</option>';
-  if (!active.length) return '<option value="">No active locations</option>';
-  return `<option value="">Choose a location</option>${active.map((location) =>
-    `<option value="${esc(location.id)}" ${state.locationId === location.id ? 'selected' : ''}>${esc(location.name)}</option>`
-  ).join('')}`;
-}
-
 function countOrdersText() {
   const count = ordersCount(state.orderText);
   return `${count} ${count === 1 ? 'order entered' : 'orders entered'}`;
@@ -150,7 +135,7 @@ function sidebar() {
     </section>
     <section class="panel aside-card aside-callout">
       <p class="callout-kicker">Location scope</p>
-      <p class="callout-text">Only the selected location is included in this stock operation.</p>
+      <p class="callout-text">Locations are discovered automatically. Sold Out zeros every active stocked location. In Stock disables tracking without writing quantities.</p>
       <div class="aside-rule"></div>
       <span class="small-muted">Preview expires at the time shown<br>in the review summary.</span>
     </section>
@@ -159,7 +144,6 @@ function sidebar() {
 
 function notice() {
   if (state.error) return `<div class="notice error" role="alert" data-testid="status-operation-error"><span class="notice-icon">!</span><span>${esc(state.error)}</span></div>`;
-  if (state.locationsError) return `<div class="notice error" role="alert"><span class="notice-icon">!</span><span>${esc(state.locationsError)} <button class="topbar-action" data-action="retry-locations" type="button">Retry</button></span></div>`;
   return '';
 }
 
@@ -197,22 +181,25 @@ function orderRows(orders = []) {
 }
 
 function variantRows(variants = [], applying = false) {
-  if (!variants.length) return `<tr><td colspan="6"><div class="empty-preview"><span class="empty-symbol">—</span><div><p class="empty-title">No variants to show</p><p class="empty-copy">No inventory variants were returned for this operation.</p></div></div></td></tr>`;
+  if (!variants.length) return `<tr><td colspan="5"><div class="empty-preview"><span class="empty-symbol">—</span><div><p class="empty-title">No variants to show</p><p class="empty-copy">No inventory variants were returned for this operation.</p></div></div></td></tr>`;
   return variants.map((variant, index) => {
     const status = variant.updateStatus || (variant.eligible ? 'pending' : 'skipped');
     const stateLabel = {
       pending: 'Ready', success: 'Updated', failed: 'Failed', skipped: 'Skipped',
     }[status] || esc(status);
-    const quantity = variant.currentQuantity == null ? '—' : variant.currentQuantity;
-    const target = variant.targetQuantity == null ? '—' : variant.targetQuantity;
+    const locations = (variant.locations || []).map((location) => `<div style="margin-bottom:12px">
+      <span class="variant-title">${esc(location.name)}</span>
+      <span class="variant-sub">${esc(location.locationId)} · ${location.active ? 'Active' : 'Inactive'}</span>
+      <span class="qty-value">${location.stocked ? esc(location.currentQuantity ?? 'Unknown') : 'Not stocked'} → ${location.targetQuantity === null ? 'No quantity write' : esc(location.targetQuantity)}</span>
+      <span class="variant-sub">${esc(location.updateStatus)}${location.updateMessage ? ` · ${esc(location.updateMessage)}` : ''}</span>
+    </div>`).join('') || '<span class="variant-sub">No location inventory returned.</span>';
     const orderNames = Array.isArray(variant.orderNumbers) ? variant.orderNumbers.join(', ') : '';
     const annotation = variant.updateMessage || variant.skipReason || variant.warning || '';
     return `<tr data-testid="row-variant-${index}">
-      <td><span class="variant-title">${esc(variant.productTitle)}</span><span class="variant-sub">${esc(variant.variantTitle)}</span></td>
+      <td><span class="variant-title">${esc(variant.productTitle)}</span><span class="variant-sub">${esc(variant.variantTitle)} · ${esc(variant.productStatus || 'Unknown status')}</span><span class="variant-sub">${esc(variant.inventoryItemId)}</span></td>
       <td><span class="variant-sub">${esc(orderNames || '—')}</span></td>
-      <td><span class="qty-value">${esc(quantity)}</span></td>
-      <td><span class="variant-sub">${variant.tracked ? 'On' : 'Off'}</span></td>
-      <td><span class="qty-value">${esc(target)}</span>${variant.requiresActivation ? '<span class="warning-text">Requires inventory activation</span>' : ''}${variant.trackingWillBeEnabled ? '<span class="warning-text">Tracking will be enabled</span>' : ''}</td>
+      <td><span class="variant-sub">${variant.tracked ? 'On' : 'Off'} → ${variant.targetTracked ? 'On' : 'Off'}</span></td>
+      <td>${locations}</td>
       <td><span class="status-pill ${esc(status)}">${esc(stateLabel)}</span>${annotation ? `<span class="${status === 'failed' || status === 'skipped' ? 'blocked-text' : 'warning-text'}">${esc(annotation)}</span>` : ''}${variant.warning && annotation !== variant.warning ? `<span class="warning-text">${esc(variant.warning)}</span>` : ''}</td>
     </tr>`;
   }).join('');
@@ -222,7 +209,7 @@ function resultsView() {
   const response = state.applyResult || state.preview;
   if (!response) return `<div class="empty-preview" data-testid="empty-preview">
     <span class="empty-symbol" aria-hidden="true">↳</span>
-    <div><p class="empty-title">No preview yet</p><p class="empty-copy">Enter order numbers, choose the stock action and location, then inspect the read-only preview before any update.</p></div>
+    <div><p class="empty-title">No preview yet</p><p class="empty-copy">Enter order numbers, choose Sold Out or In Stock, and inspect the read-only preview before any update.</p></div>
   </div>`;
   const applied = Boolean(state.applyResult);
   const actionName = response.action === 'in_stock' ? 'Set in stock' : 'Set sold out';
@@ -230,10 +217,10 @@ function resultsView() {
   const readyCount = variants.filter((item) => item.eligible && item.updateStatus !== 'skipped').length;
   const applicable = readyCount > 0 && !applied;
   return `<section class="results" aria-live="polite" data-testid="section-results">
-    ${applied ? `<div class="notice ${response.summary.failedUpdates > 0 ? 'error' : 'success'}" role="status" data-testid="status-apply-complete"><span class="notice-icon">${response.summary.failedUpdates > 0 ? '!' : '✓'}</span><span>${response.summary.failedUpdates > 0 ? 'Completed with issues' : 'Updates verified'} at <strong>${esc(response.locationName)}</strong>: ${esc(response.summary.successfulUpdates)} updated, ${esc(response.summary.failedUpdates)} failed, ${esc(response.summary.skippedItems)} skipped. Review every result below.</span></div>` : ''}
+    ${applied ? `<div class="notice ${response.summary.failedUpdates > 0 ? 'error' : 'success'}" role="status" data-testid="status-apply-complete"><span class="notice-icon">${response.summary.failedUpdates > 0 ? '!' : '✓'}</span><span>${response.summary.failedUpdates > 0 ? 'Completed with issues' : 'Verification finished'}: ${esc(response.summary.successfulUpdates)} updated, ${esc(response.summary.failedUpdates)} failed, ${esc(response.summary.skippedItems)} skipped. Review every variant and location result below.</span></div>` : ''}
     <div class="results-header">
       <div><h2 class="results-heading">${applied ? 'Apply results' : 'Review before applying'}</h2>
-      <p class="results-sub">${esc(actionName)} · ${esc(response.locationName)} · ${esc(response.previewId)}</p></div>
+      <p class="results-sub">${esc(actionName)} · Automatic location discovery · ${esc(response.previewId)}</p></div>
       ${!applied && response.expiresAt ? `<span class="expiry">PREVIEW EXPIRES ${esc(formatDate(response.expiresAt))}</span>` : ''}
     </div>
     ${summaryPanel(response.summary)}
@@ -244,14 +231,14 @@ function resultsView() {
     <section class="panel result-panel" style="margin-top:14px">
       <div class="result-panel-head"><h3>Variants ${applied ? 'processed' : 'in scope'}</h3><span class="result-count">${variants.length} ${variants.length === 1 ? 'item' : 'items'}</span></div>
       <div class="variant-wrap"><table class="variant-table">
-        <thead><tr><th>Product / variant</th><th>Orders</th><th>Current</th><th>Tracking</th><th>Target</th><th>${applied ? 'Result' : 'Eligibility'}</th></tr></thead>
+        <thead><tr><th>Product / variant</th><th>Orders</th><th>Tracking: current → target</th><th>Locations: current → target</th><th>${applied ? 'Result' : 'Eligibility'}</th></tr></thead>
         <tbody>${variantRows(variants, applied)}</tbody>
       </table></div>
     </section>
     ${!applied ? `<label class="confirm-box">
       <input id="confirm-change" type="checkbox" ${state.confirmed ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="checkbox-confirm">
       <span class="confirm-label">I reviewed this preview and authorize these inventory changes.
-        <span class="confirm-detail">${readyCount} eligible variant${readyCount === 1 ? '' : 's'} at ${esc(response.locationName)}. Skipped items will not be updated.</span>
+        <span class="confirm-detail">${readyCount} eligible variant${readyCount === 1 ? '' : 's'}. ${response.action === 'sold_out' ? 'Enable tracking and zero every active stocked location shown.' : 'Disable tracking for these variants; do not write quantities.'} Skipped items will not be updated.</span>
       </span>
     </label>
     <div class="apply-bar"><p class="apply-explainer">This applies the variants in this preview only. Editing the order list or settings clears this review and requires a new preview.</p>
@@ -265,9 +252,7 @@ function resultsView() {
 }
 
 function appView() {
-  const hasLocations = state.locations.some((location) => location.active);
-  const validQuantity = Number.isSafeInteger(Number(state.quantity)) && Number(state.quantity) > 0;
-  const canPreview = Boolean(state.orderText.trim() && state.locationId && hasLocations && (state.action !== 'in_stock' || validQuantity) && !state.busy && !state.locationsLoading);
+  const canPreview = Boolean(state.orderText.trim() && !state.busy);
   return `<header class="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true">/s</span><span class="brand-name">Shopify Bulk Stock Manager</span></div>
     <div class="topbar-meta"><span class="live-dot"></span> Authenticated session <button class="topbar-action" type="button" data-action="logout" ${state.busy ? 'disabled' : ''} data-testid="button-logout">Sign out</button></div>
@@ -284,24 +269,18 @@ function appView() {
         <label class="field-label" for="orders">Order numbers <span class="field-hint">LINES, COMMAS, OR SPACES</span></label>
         <textarea class="orders-input" id="orders" name="orders" maxlength="20000" ${state.busy ? 'disabled' : ''} placeholder="#1001&#10;#1002&#10;1003" data-testid="input-orders">${esc(state.orderText)}</textarea>
         <div class="input-foot"><span>Paste order names or numbers</span><span id="order-count">${countOrdersText()}</span></div>
-        <div class="settings-grid">
+        <div class="settings-grid" style="grid-template-columns:1fr">
           <div class="setting">
             <span class="field-label">Inventory action</span>
             <div class="segmented" role="radiogroup" aria-label="Inventory action">
-              <label class="segment-option"><input type="radio" name="action" value="sold_out" ${state.action === 'sold_out' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-sold-out"><span>Set sold out</span></label>
-              <label class="segment-option"><input type="radio" name="action" value="in_stock" ${state.action === 'in_stock' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-in-stock"><span>Set in stock</span></label>
+              <label class="segment-option"><input type="radio" name="action" value="sold_out" ${state.action === 'sold_out' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-sold-out"><span>Sold Out</span></label>
+              <label class="segment-option"><input type="radio" name="action" value="in_stock" ${state.action === 'in_stock' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-in-stock"><span>In Stock</span></label>
             </div>
           </div>
-          <div class="setting" id="quantity-setting" ${state.action !== 'in_stock' ? 'hidden' : ''}>
-            <label class="field-label" for="quantity">In-stock target <span class="field-hint">POSITIVE INTEGER</span></label>
-            <div class="quantity-wrap"><input class="field-control" id="quantity" type="number" min="1" max="1000000" step="1" value="${esc(state.quantity)}" ${state.action !== 'in_stock' || state.busy ? 'disabled' : ''} data-testid="input-quantity"><span class="quantity-unit">units</span></div>
-          </div>
-          <div class="setting">
-            <label class="field-label" for="location">Inventory location</label>
-            <div class="select-wrap"><select class="field-control" id="location" ${!hasLocations || state.locationsLoading || state.busy ? 'disabled' : ''} data-testid="select-location">${locationOptions()}</select></div>
-          </div>
         </div>
-        ${state.action === 'in_stock' ? '<div class="notice" role="note" style="margin-top:18px">In Stock sets an exact quantity and overwrites existing available stock at the selected location. It does not restore historical quantities.</div>' : ''}
+        <div class="notice" role="note" style="margin-top:18px">${state.action === 'sold_out'
+          ? 'Sold Out enables tracking and sets available inventory to exactly 0 at every active stocked location. Inactive locations are shown and skipped. Shopify’s CONTINUE selling policy can still permit sales at zero.'
+          : 'In Stock disables inventory tracking. It does not set, invent, or restore quantities, publish products, or change sales channels. Availability depends on Shopify settings.'}</div>
         <div class="button-row">
           <p class="quiet-note">A preview reads live order and inventory data. It does not change stock.</p>
           <button class="btn btn-primary" type="button" data-action="preview" ${!canPreview ? 'disabled' : ''} data-testid="button-preview">
@@ -334,7 +313,6 @@ async function checkSession() {
   try {
     const result = await request('/api/auth/session');
     state.authenticated = Boolean(result?.authenticated);
-    if (state.authenticated) await loadLocations();
   } catch (error) {
     if (error.status === 401) state.authenticated = false;
     else {
@@ -345,41 +323,15 @@ async function checkSession() {
   render();
 }
 
-async function loadLocations() {
-  state.locationsLoading = true;
-  state.locationsError = '';
-  render();
-  try {
-    const response = await request('/api/shopify/locations');
-    state.locations = Array.isArray(response?.locations) ? response.locations : [];
-    if (!state.locations.some((location) => location.active && location.id === state.locationId)) {
-      state.locationId = state.locations.find((location) => location.active)?.id || '';
-    }
-    if (!state.locations.some((location) => location.active)) state.locationsError = 'No active inventory locations were returned for this store.';
-  } catch (error) {
-    state.locations = [];
-    state.locationsError = error.message || 'Could not load inventory locations.';
-  } finally {
-    state.locationsLoading = false;
-  }
-}
-
 function getPayload() {
   return {
     orders: state.orderText,
     action: state.action,
-    ...(state.action === 'in_stock' ? { quantity: Number(state.quantity) } : {}),
-    locationId: state.locationId,
   };
 }
 
 async function preview() {
-  if (!state.orderText.trim() || !state.locationId || state.busy) return;
-  if (state.action === 'in_stock' && (!Number.isSafeInteger(Number(state.quantity)) || Number(state.quantity) < 1)) {
-    state.error = 'Enter a positive whole-number in-stock target.';
-    render();
-    return;
-  }
+  if (!state.orderText.trim() || state.busy) return;
   clearOperation();
   state.busy = 'preview';
   render();
@@ -418,9 +370,10 @@ async function applyChanges() {
     return;
   }
   const eligible = state.preview.variants.filter((item) => item.eligible);
-  const target = eligible[0]?.targetQuantity;
   if (!eligible.length || !window.confirm(
-    `Set ${eligible.length} variant(s) to exactly ${target} available at "${state.preview.locationName}"? Existing stock will be overwritten. Tracking and location activation will be enabled where shown in the preview. This changes real Shopify inventory.`,
+    state.preview.action === 'sold_out'
+      ? `Enable tracking and set ${eligible.length} confirmed variant(s) to exactly 0 available at every active stocked location shown? Inactive locations are skipped. CONTINUE selling policy can still permit sales. This changes real inventory.`
+      : `Disable inventory tracking for ${eligible.length} confirmed variant(s)? No quantities will be written or restored. Availability still depends on product status, channels, and Shopify settings.`,
   )) return;
   state.busy = 'apply';
   state.error = '';
@@ -462,7 +415,6 @@ root.addEventListener('submit', async (event) => {
     if (!result?.authenticated) throw new Error('The server did not confirm an authenticated session.');
     state.authenticated = true;
     state.sessionError = '';
-    await loadLocations();
   } catch (error) {
     state.authenticated = false;
     state.loginError = error.message || 'Could not sign in. Check the password and try again.';
@@ -481,16 +433,7 @@ root.addEventListener('input', (event) => {
     const results = root.querySelector('.results, .empty-preview');
     if (results) results.outerHTML = resultsView();
     const previewButton = root.querySelector('[data-action="preview"]');
-    if (previewButton) previewButton.disabled = !state.orderText.trim() || !state.locationId || !state.locations.some((item) => item.active) || (state.action === 'in_stock' && (!Number.isSafeInteger(Number(state.quantity)) || Number(state.quantity) <= 0)) || state.locationsLoading || state.busy !== '';
-  }
-  if (event.target.id === 'quantity') {
-    state.quantity = event.target.value;
-    clearOperation();
-    const results = root.querySelector('.results, .empty-preview');
-    if (results) results.outerHTML = resultsView();
-    const button = root.querySelector('[data-action="preview"]');
-    const valid = Number.isSafeInteger(Number(state.quantity)) && Number(state.quantity) > 0;
-    if (button) button.disabled = !state.orderText.trim() || !state.locationId || !valid || state.locationsLoading || state.busy !== '';
+    if (previewButton) previewButton.disabled = !state.orderText.trim() || state.busy !== '';
   }
 });
 
@@ -498,10 +441,6 @@ root.addEventListener('change', (event) => {
   const target = event.target;
   if (target.name === 'action') {
     state.action = target.value;
-    clearOperation();
-    render();
-  } else if (target.id === 'location') {
-    state.locationId = target.value;
     clearOperation();
     render();
   } else if (target.id === 'confirm-change') {
@@ -526,23 +465,15 @@ root.addEventListener('click', async (event) => {
       return;
     }
     state.authenticated = false;
-    state.locations = [];
-    state.locationId = '';
     state.orderText = '';
     state.loginError = '';
     clearOperation();
-    render();
-  }
-  if (action === 'retry-locations') {
-    event.preventDefault();
-    await loadLocations();
     render();
   }
   if (action === 'retry-session') await checkSession();
   if (action === 'new-operation') {
     state.orderText = '';
     state.action = 'sold_out';
-    state.quantity = '10';
     clearOperation();
     render();
   }

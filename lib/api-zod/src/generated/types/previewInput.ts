@@ -11,14 +11,4 @@ export interface PreviewInput {
   /** @maxLength 20000 */
   orders: string;
   action: PreviewInputAction;
-  /**
-     * @minimum 1
-     * @maximum 1000000
-     */
-  quantity?: number;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  locationId: string;
 }

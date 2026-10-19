@@ -44,7 +44,11 @@ function safeErrorMessage(errors: ShopifyGraphQLError[]): string {
     /access denied|permission|scope/i.test(messages)
   ) {
     const mentioned = [...new Set(messages.match(/\b(?:read|write)_[a-z_]+\b/g) ?? [])];
-    return `Shopify denied this request. Enable ${mentioned.length ? mentioned.join(", ") : "read_orders, read_products, read_inventory, write_inventory, and read_locations"} in your Shopify custom app's Admin API permissions and update SHOPIFY_ADMIN_ACCESS_TOKEN in Replit Secrets if Shopify issues a replacement. Orders older than 60 days also require approved read_all_orders access.`;
+    let detail = messages;
+    for (const value of [process.env.SHOPIFY_STORE_DOMAIN, process.env.SHOPIFY_ADMIN_ACCESS_TOKEN]) {
+      if (value?.trim()) detail = detail.split(value.trim()).join("[redacted]");
+    }
+    return `Shopify permission error: ${detail.slice(0, 1500)} Configure ${mentioned.includes("read_locations") ? "read_locations (Shopify may also accept read_markets_home)" : mentioned.join(", ") || "the required Admin API permissions"} in your existing custom app and update SHOPIFY_ADMIN_ACCESS_TOKEN privately if Shopify issues a replacement.`;
   }
   if (codes.includes("THROTTLED") || /throttl|rate limit/i.test(messages)) {
     return "Shopify is rate-limiting requests. Wait a moment and try again.";
@@ -179,7 +183,9 @@ export async function assertShopifyPermissions(): Promise<void> {
     throw new ShopifyApiError("Shopify could not identify your custom app installation. Verify SHOPIFY_ADMIN_ACCESS_TOKEN.");
   }
   const granted = new Set(result.currentAppInstallation.accessScopes.map((scope) => scope.handle));
-  const required = ["read_orders", "read_products", "read_inventory", "write_inventory", "read_locations"];
+  // Location access is validated by the real field queries, since Shopify
+  // supports alternative scopes. An ID-only query is not sufficient.
+  const required = ["read_orders", "read_products", "read_inventory", "write_inventory"];
   const missing = required.filter((scope) =>
     !granted.has(scope) && !(scope.startsWith("read_") && granted.has(scope.replace(/^read_/, "write_"))),
   );

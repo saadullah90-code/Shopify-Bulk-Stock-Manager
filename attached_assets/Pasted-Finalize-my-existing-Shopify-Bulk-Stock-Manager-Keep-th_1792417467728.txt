@@ -1,0 +1,40 @@
+Finalize my existing Shopify Bulk Stock Manager. Keep the app simple, reliable, and connected directly to the working Shopify Admin API. Do not use the Replit Shopify Connector or OAuth.
+
+### Required workflow
+
+**1. Sold Out**
+- I enter one or multiple Shopify order numbers.
+- Find the exact product variants in those orders.
+- Automatically enable inventory tracking if it is off.
+- Set inventory to exactly 0 at all relevant Shopify locations, including locations with existing positive quantities.
+- Verify that no positive sellable inventory remains at other locations that could make the variant appear in stock.
+- Do not change unrelated variants.
+
+**2. In Stock**
+- I enter one or multiple order numbers and select In Stock.
+- Find the exact variants associated with those orders.
+- Disable inventory tracking for those variants, so Shopify can treat them as available without tracked stock, subject to product status, sales-channel availability, and Shopify settings.
+- Do not invent or restore previous quantities.
+- Do not change unrelated variants.
+
+### Keep the UI simple
+- One input box for multiple order numbers.
+- Two actions: Sold Out and In Stock.
+- No manual inventory-location dropdown.
+- Show a read-only preview of the matched orders and variants.
+- Require confirmation before applying changes.
+- Show clear success, skipped, and failure results.
+
+### Technical requirements
+- Reuse the existing working `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN` secrets.
+- Use the supported Shopify Admin GraphQL API version already configured in the project.
+- Discover and handle inventory locations automatically on the backend.
+- Use the correct Shopify mutations for tracking and inventory quantities.
+- Handle pagination, duplicate variants, missing orders, inactive locations, API errors, and partial failures.
+- Never expose credentials or show fake success messages.
+- Do not claim an update succeeded unless Shopify confirms it.
+
+### Testing
+First run a read-only preview using order 10174. Do not modify stock during this test. Confirm the exact variants and proposed changes, then report whether the application is ready for a controlled live test.
+
+Inspect the existing project and make only the necessary changes. Do not rebuild the entire application or add unrelated features.

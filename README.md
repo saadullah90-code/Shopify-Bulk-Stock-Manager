@@ -1,6 +1,6 @@
 # Shopify Bulk Stock Manager
 
-A private, order-based Shopify inventory tool with an Express backend and a plain HTML/CSS/vanilla JavaScript frontend. There is no application database.
+A private, order-based Shopify stock and tracking tool with an Express backend and a plain HTML/CSS/vanilla JavaScript frontend. There is no application database.
 
 ## Setup
 
@@ -18,9 +18,9 @@ Set these four values privately in **Replit Secrets**:
 
 Both Shopify values are mandatory. Missing or malformed configuration produces a clear error instead of falling back to another store. No Client ID, Client Secret, redirect URL, or connector configuration is needed. Do not put real values in `.env.example`, source code, URLs, or chat. Restart the API workflow after updating Secrets.
 
-Required permissions are `read_orders`, `read_products`, `read_inventory`, `write_inventory`, and `read_locations`. The app checks the token's granted scopes before loading locations, previewing, or applying. A corresponding write scope also satisfies read access. Missing permissions are named explicitly. Older orders can require approved `read_all_orders` access; otherwise Shopify normally limits order access to the recent 60-day window. If permissions change, follow Shopify's instructions to update/reinstall the custom app and replace the stored token if needed. This implementation does **not** use `write_products`.
+Core permissions are `read_orders`, `read_products`, `read_inventory`, and `write_inventory`. A corresponding write scope also satisfies read access. Full automatic location discovery normally needs `read_locations`; Shopify may accept an alternative scope such as `read_markets_home` for some fields. The app validates access with actual location name and active-status queries rather than assuming an ID-only query proves access. Missing permissions and Shopify's exact permission errors are shown safely. Older orders require approved `read_all_orders` access beyond the usual recent 60-day window. If permissions change, follow Shopify's instructions to update/reinstall the custom app and replace the stored token if needed. The app does **not** change inventory policy or require `write_products`.
 
-The Admin GraphQL API version is pinned to **2026-10** in `artifacts/api-server/src/lib/shopify-client.ts`. Follow version-specific Shopify documentation when upgrading; quantity and activation mutations require an `@idempotent` directive in this version.
+The Admin GraphQL API version is pinned to **2026-10** in `artifacts/api-server/src/lib/shopify-client.ts`. Follow version-specific Shopify documentation when upgrading; quantity mutations use field-level `@idempotent` keys.
 
 ## Run
 
@@ -37,15 +37,19 @@ Useful check: `pnpm run typecheck`.
 
 1. Sign in with the app password.
 2. Paste up to 100 unique numeric order numbers, separated by lines, commas, or spaces. A leading `#` is optional.
-3. Choose **Sold Out** or **In Stock**, and verify the explicitly selected Shopify location. In Stock defaults to **10** and accepts a positive whole-number target.
+3. Choose **Sold Out** or **In Stock**. No manual location or quantity controls are needed.
 4. Select **Preview inventory changes**. This is read-only.
-5. Review every order, grouped variant, current quantity, tracking status, proposed target, warning, and skip reason.
+5. Review every order, grouped variant, tracking transition, and each automatically discovered location's quantity, target, active status, warning, and skip reason.
 6. Check the authorization box, select **Apply confirmed changes**, and confirm the dialog.
-7. Review per-variant results. Success is reported only after Shopify accepts the change and the resulting available quantity is read back.
+7. Review per-variant and per-location results. Success is reported only after Shopify confirms the mutation and the final tracking/quantity state is read back.
 
-Sold Out sets available inventory to exactly **0**. In Stock sets the exact chosen positive amount; it overwrites stock and does not restore historical quantities. Tracking is enabled when necessary, and inventory is activated only at the selected location when shown in the preview. Enabling tracking is a variant-level setting.
+**Sold Out** enables tracking when it is off and sets available inventory to exactly **0** at every active stocked location, including positive or negative quantities. All inventory-level pages are read again afterward, and any nonzero/unknown available quantity at any active stocked location prevents a success result. Unstocked locations are not activated merely to create zeros.
 
-Other variants and location quantities are not changed. Products with Shopify's **CONTINUE** inventory policy may still be sold at zero stock. Stock remaining at other locations can also keep a product available. The tool warns about these limitations and does not silently change inventory policy, sales channels, or other product information.
+**In Stock** disables tracking with `inventoryItemUpdate`, verifies `tracked: false`, and never calls a quantity mutation. It does not invent or restore previous quantities. Already-disabled tracking is reported as skipped/no change.
+
+Only exact variants from the entered orders are touched. Inactive locations are listed and skipped because they are not currently sellable; their quantities are not erased. A location changing active status after preview invalidates that variant's operation. Partial failures remain failures and show what was confirmed before the error.
+
+Products with Shopify's **CONTINUE** policy may still be sold at zero. Disabling tracking does not make a draft/archived product active or publish it to a sales channel. The tool warns about these limitations and never changes policy, product status, or channels.
 
 Previews are session-bound, expire after 10 minutes, and can be applied only once. Editing inputs invalidates the review. Inventory is re-read before writing and compare-and-set quantities protect against concurrent changes. Transient read requests are retried; writes are not blindly retried.
 

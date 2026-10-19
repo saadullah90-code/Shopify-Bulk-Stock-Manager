@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { InventoryLocationResult } from './inventoryLocationResult';
 import type { VariantResultInventoryPolicy } from './variantResultInventoryPolicy';
 import type { VariantResultUpdateStatus } from './variantResultUpdateStatus';
 
@@ -14,17 +15,15 @@ export interface VariantResult {
   variantTitle: string;
   orderNumbers: string[];
   /** @nullable */
-  currentQuantity: number | null;
+  productStatus: string | null;
   tracked: boolean;
   /** @nullable */
   inventoryPolicy: VariantResultInventoryPolicy;
-  /** @nullable */
-  targetQuantity: number | null;
+  targetTracked: boolean;
+  locations: InventoryLocationResult[];
   eligible: boolean;
   /** @nullable */
   skipReason: string | null;
-  requiresActivation: boolean;
-  trackingWillBeEnabled: boolean;
   /** @nullable */
   warning: string | null;
   updateStatus: VariantResultUpdateStatus;

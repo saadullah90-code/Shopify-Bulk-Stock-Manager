@@ -12,7 +12,6 @@ import type { VariantResult } from './variantResult';
 export interface ApplyResponse {
   previewId: string;
   action: ApplyResponseAction;
-  locationName: string;
   variants: VariantResult[];
   summary: Summary;
 }
