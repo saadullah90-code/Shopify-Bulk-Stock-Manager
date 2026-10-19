@@ -9,6 +9,12 @@ Read the version-specific requirements before copying Shopify inventory mutation
 
 **How to apply:** Follow the versioned description and cautions, verify uncertain fields with read-only schema checks, and do not add blind write retries. A safe idempotent retry must reuse the original operation's key.
 
+For API 2026-10, inventory quantity compare-and-set uses `changeFromQuantity`, not `compareQuantity`.
+
+**Why:** The live schema removed the old input field. Sending it enabled tracking in the preceding request but caused the quantity update to fail, leaving a partially completed Sold Out operation.
+
+**How to apply:** Keep the fresh-read comparison quantity, using the current schema's input field. Validate mutation documents through a separately selected read-only GraphQL operation when stock writes are not authorized.
+
 An ID-only location query does not prove access to location details.
 
 **Why:** On this store, the token could resolve `Location.id` while Shopify denied `Location.name` and `Location.isActive`. A minimal successful query led to an incorrect conclusion that full location access worked.

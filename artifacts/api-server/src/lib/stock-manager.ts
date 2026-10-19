@@ -298,7 +298,7 @@ async function setZero(id: string, locationId: string, quantity: number, preview
     input: {
       name: "available", reason: "correction",
       referenceDocumentUri: `logistics://bulk-stock-manager/${previewId}/${randomUUID()}`,
-      quantities: [{ inventoryItemId: id, locationId, quantity: 0, compareQuantity: quantity }],
+      quantities: [{ inventoryItemId: id, locationId, quantity: 0, changeFromQuantity: quantity }],
     },
   });
   const error = shopifyUserErrors(data.inventorySetQuantities.userErrors);

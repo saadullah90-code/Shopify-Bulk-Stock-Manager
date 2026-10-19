@@ -53,7 +53,11 @@ function safeErrorMessage(errors: ShopifyGraphQLError[]): string {
   if (codes.includes("THROTTLED") || /throttl|rate limit/i.test(messages)) {
     return "Shopify is rate-limiting requests. Wait a moment and try again.";
   }
-  return "Shopify returned a GraphQL error. Verify your custom app's Admin API permissions and the configured store. No success can be confirmed for this request.";
+  let detail = messages.trim() || "Shopify did not provide an error message.";
+  for (const value of [process.env.SHOPIFY_STORE_DOMAIN, process.env.SHOPIFY_ADMIN_ACCESS_TOKEN]) {
+    if (value?.trim()) detail = detail.split(value.trim()).join("[redacted]");
+  }
+  return `Shopify GraphQL error: ${detail.slice(0, 1500)} No success can be confirmed for this request.`;
 }
 
 function wait(ms: number): Promise<void> {
