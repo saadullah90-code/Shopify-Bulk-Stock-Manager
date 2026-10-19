@@ -1,6 +1,7 @@
 import './index.css';
 
 const root = document.querySelector('#app');
+let previewExpiryTimer;
 const state = {
   authenticated: null,
   sessionError: '',
@@ -35,6 +36,12 @@ async function request(path, options = {}) {
   let data = null;
   try { data = await response.json(); } catch { /* Empty response body. */ }
   if (!response.ok) {
+    if (response.status === 401 && path !== '/api/auth/login') {
+      state.authenticated = false;
+      state.sessionError = 'Your session expired. Sign in again.';
+      state.locations = [];
+      clearOperation();
+    }
     const error = new Error(data?.error || `Request failed (${response.status}).`);
     error.status = response.status;
     throw error;
@@ -43,6 +50,7 @@ async function request(path, options = {}) {
 }
 
 function clearOperation() {
+  clearTimeout(previewExpiryTimer);
   state.preview = null;
   state.applyResult = null;
   state.error = '';
@@ -50,7 +58,7 @@ function clearOperation() {
 }
 
 function ordersCount(text) {
-  return text.split(/[\n,]+/).map((part) => part.trim()).filter(Boolean).length;
+  return new Set(text.split(/[\s,]+/).map((part) => part.trim().replace(/^#/, '')).filter(Boolean)).size;
 }
 
 function formatDate(value) {
@@ -72,7 +80,7 @@ function loadingView() {
 function loginView() {
   const error = state.loginError || state.sessionError;
   return `<header class="topbar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">/s</span><span class="brand-name">STOCK / CONTROL</span></div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true">/s</span><span class="brand-name">Shopify Bulk Stock Manager</span></div>
     <div class="topbar-meta"><span class="live-dot"></span> Private workspace</div>
   </header>
   <main class="login-screen">
@@ -161,6 +169,7 @@ function summaryPanel(summary) {
     ['validOrders', 'Orders found'],
     ['variantsFound', 'Variants found'],
     ['successfulUpdates', 'Updated'],
+    ['failedUpdates', 'Failed'],
     ['skippedItems', 'Skipped'],
   ];
   return `<div class="summary-grid" aria-label="Operation summary">${cells.map(([key, label]) =>
@@ -188,7 +197,7 @@ function orderRows(orders = []) {
 }
 
 function variantRows(variants = [], applying = false) {
-  if (!variants.length) return `<tr><td colspan="5"><div class="empty-preview"><span class="empty-symbol">—</span><div><p class="empty-title">No variants to show</p><p class="empty-copy">No inventory variants were returned for this operation.</p></div></div></td></tr>`;
+  if (!variants.length) return `<tr><td colspan="6"><div class="empty-preview"><span class="empty-symbol">—</span><div><p class="empty-title">No variants to show</p><p class="empty-copy">No inventory variants were returned for this operation.</p></div></div></td></tr>`;
   return variants.map((variant, index) => {
     const status = variant.updateStatus || (variant.eligible ? 'pending' : 'skipped');
     const stateLabel = {
@@ -202,6 +211,7 @@ function variantRows(variants = [], applying = false) {
       <td><span class="variant-title">${esc(variant.productTitle)}</span><span class="variant-sub">${esc(variant.variantTitle)}</span></td>
       <td><span class="variant-sub">${esc(orderNames || '—')}</span></td>
       <td><span class="qty-value">${esc(quantity)}</span></td>
+      <td><span class="variant-sub">${variant.tracked ? 'On' : 'Off'}</span></td>
       <td><span class="qty-value">${esc(target)}</span>${variant.requiresActivation ? '<span class="warning-text">Requires inventory activation</span>' : ''}${variant.trackingWillBeEnabled ? '<span class="warning-text">Tracking will be enabled</span>' : ''}</td>
       <td><span class="status-pill ${esc(status)}">${esc(stateLabel)}</span>${annotation ? `<span class="${status === 'failed' || status === 'skipped' ? 'blocked-text' : 'warning-text'}">${esc(annotation)}</span>` : ''}${variant.warning && annotation !== variant.warning ? `<span class="warning-text">${esc(variant.warning)}</span>` : ''}</td>
     </tr>`;
@@ -220,7 +230,7 @@ function resultsView() {
   const readyCount = variants.filter((item) => item.eligible && item.updateStatus !== 'skipped').length;
   const applicable = readyCount > 0 && !applied;
   return `<section class="results" aria-live="polite" data-testid="section-results">
-    ${applied ? `<div class="notice success" role="status" data-testid="status-apply-complete"><span class="notice-icon">✓</span><span>Apply finished for <strong>${esc(response.locationName)}</strong>. Review the per-variant result below.</span></div>` : ''}
+    ${applied ? `<div class="notice ${response.summary.failedUpdates > 0 ? 'error' : 'success'}" role="status" data-testid="status-apply-complete"><span class="notice-icon">${response.summary.failedUpdates > 0 ? '!' : '✓'}</span><span>${response.summary.failedUpdates > 0 ? 'Completed with issues' : 'Updates verified'} at <strong>${esc(response.locationName)}</strong>: ${esc(response.summary.successfulUpdates)} updated, ${esc(response.summary.failedUpdates)} failed, ${esc(response.summary.skippedItems)} skipped. Review every result below.</span></div>` : ''}
     <div class="results-header">
       <div><h2 class="results-heading">${applied ? 'Apply results' : 'Review before applying'}</h2>
       <p class="results-sub">${esc(actionName)} · ${esc(response.locationName)} · ${esc(response.previewId)}</p></div>
@@ -228,13 +238,13 @@ function resultsView() {
     </div>
     ${summaryPanel(response.summary)}
     <section class="panel result-panel">
-      <div class="result-panel-head"><h3>Order resolution</h3><span class="result-count">${(response.orders || []).length} checked</span></div>
+      <div class="result-panel-head"><h3>Order resolution</h3><span class="result-count">${(response.orders || state.preview?.orders || []).length} checked</span></div>
       ${orderRows(response.orders || state.preview?.orders || [])}
     </section>
     <section class="panel result-panel" style="margin-top:14px">
       <div class="result-panel-head"><h3>Variants ${applied ? 'processed' : 'in scope'}</h3><span class="result-count">${variants.length} ${variants.length === 1 ? 'item' : 'items'}</span></div>
       <div class="variant-wrap"><table class="variant-table">
-        <thead><tr><th>Product / variant</th><th>Orders</th><th>Current</th><th>Target</th><th>${applied ? 'Result' : 'Eligibility'}</th></tr></thead>
+        <thead><tr><th>Product / variant</th><th>Orders</th><th>Current</th><th>Tracking</th><th>Target</th><th>${applied ? 'Result' : 'Eligibility'}</th></tr></thead>
         <tbody>${variantRows(variants, applied)}</tbody>
       </table></div>
     </section>
@@ -259,8 +269,8 @@ function appView() {
   const validQuantity = Number.isSafeInteger(Number(state.quantity)) && Number(state.quantity) > 0;
   const canPreview = Boolean(state.orderText.trim() && state.locationId && hasLocations && (state.action !== 'in_stock' || validQuantity) && !state.busy && !state.locationsLoading);
   return `<header class="topbar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">/s</span><span class="brand-name">STOCK / CONTROL</span></div>
-    <div class="topbar-meta"><span class="live-dot"></span> Authenticated session <button class="topbar-action" type="button" data-action="logout" data-testid="button-logout">Sign out</button></div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true">/s</span><span class="brand-name">Shopify Bulk Stock Manager</span></div>
+    <div class="topbar-meta"><span class="live-dot"></span> Authenticated session <button class="topbar-action" type="button" data-action="logout" ${state.busy ? 'disabled' : ''} data-testid="button-logout">Sign out</button></div>
   </header>
   <main class="main">
     <div class="page-heading"><div><p class="eyebrow">Inventory operations / 01</p><h1>Order-based stock change</h1></div>
@@ -271,8 +281,8 @@ function appView() {
     <div class="workspace">
       <section class="panel input-panel">
         <div class="panel-topline"><h2 class="panel-title">Build a stock preview</h2><span class="index-label">READ-ONLY FIRST</span></div>
-        <label class="field-label" for="orders">Order numbers <span class="field-hint">ONE PER LINE OR COMMA-SEPARATED</span></label>
-        <textarea class="orders-input" id="orders" name="orders" maxlength="20000" ${state.busy ? 'disabled' : ''} placeholder="#10482&#10;#10479&#10;#10466" data-testid="input-orders">${esc(state.orderText)}</textarea>
+        <label class="field-label" for="orders">Order numbers <span class="field-hint">LINES, COMMAS, OR SPACES</span></label>
+        <textarea class="orders-input" id="orders" name="orders" maxlength="20000" ${state.busy ? 'disabled' : ''} placeholder="#1001&#10;#1002&#10;1003" data-testid="input-orders">${esc(state.orderText)}</textarea>
         <div class="input-foot"><span>Paste order names or numbers</span><span id="order-count">${countOrdersText()}</span></div>
         <div class="settings-grid">
           <div class="setting">
@@ -291,6 +301,7 @@ function appView() {
             <div class="select-wrap"><select class="field-control" id="location" ${!hasLocations || state.locationsLoading || state.busy ? 'disabled' : ''} data-testid="select-location">${locationOptions()}</select></div>
           </div>
         </div>
+        ${state.action === 'in_stock' ? '<div class="notice" role="note" style="margin-top:18px">In Stock sets an exact quantity and overwrites existing available stock at the selected location. It does not restore historical quantities.</div>' : ''}
         <div class="button-row">
           <p class="quiet-note">A preview reads live order and inventory data. It does not change stock.</p>
           <button class="btn btn-primary" type="button" data-action="preview" ${!canPreview ? 'disabled' : ''} data-testid="button-preview">
@@ -342,7 +353,7 @@ async function loadLocations() {
     const response = await request('/api/shopify/locations');
     state.locations = Array.isArray(response?.locations) ? response.locations : [];
     if (!state.locations.some((location) => location.active && location.id === state.locationId)) {
-      state.locationId = '';
+      state.locationId = state.locations.find((location) => location.active)?.id || '';
     }
     if (!state.locations.some((location) => location.active)) state.locationsError = 'No active inventory locations were returned for this store.';
   } catch (error) {
@@ -380,6 +391,15 @@ async function preview() {
     if (!state.preview || typeof state.preview.previewId !== 'string') {
       state.preview = null;
       state.error = 'The preview response was incomplete. No changes were made.';
+    } else {
+      const previewId = state.preview.previewId;
+      previewExpiryTimer = setTimeout(() => {
+        if (state.preview?.previewId === previewId && !state.applyResult && state.busy !== 'apply') {
+          clearOperation();
+          state.error = 'The preview expired. Create a fresh preview before applying.';
+          render();
+        }
+      }, Math.max(0, Date.parse(state.preview.expiresAt) - Date.now()));
     }
   } catch (error) {
     state.error = error.message || 'Could not create a preview. No changes were made.';
@@ -391,6 +411,17 @@ async function preview() {
 
 async function applyChanges() {
   if (!state.preview?.previewId || !state.confirmed || state.busy) return;
+  if (Date.parse(state.preview.expiresAt) <= Date.now()) {
+    clearOperation();
+    state.error = 'The preview expired. Create a fresh preview before applying.';
+    render();
+    return;
+  }
+  const eligible = state.preview.variants.filter((item) => item.eligible);
+  const target = eligible[0]?.targetQuantity;
+  if (!eligible.length || !window.confirm(
+    `Set ${eligible.length} variant(s) to exactly ${target} available at "${state.preview.locationName}"? Existing stock will be overwritten. Tracking and location activation will be enabled where shown in the preview. This changes real Shopify inventory.`,
+  )) return;
   state.busy = 'apply';
   state.error = '';
   render();
@@ -399,12 +430,16 @@ async function applyChanges() {
       method: 'POST',
       body: JSON.stringify({ previewId: state.preview.previewId, confirmed: true }),
     });
+    clearTimeout(previewExpiryTimer);
     if (!state.applyResult || !Array.isArray(state.applyResult.variants)) {
       state.applyResult = null;
       state.error = 'The apply response was incomplete. Refresh inventory before continuing.';
     }
   } catch (error) {
     state.error = error.message || 'The inventory update could not be completed.';
+    state.preview = null;
+    state.confirmed = false;
+    clearTimeout(previewExpiryTimer);
   } finally {
     state.busy = '';
     render();
@@ -446,7 +481,7 @@ root.addEventListener('input', (event) => {
     const results = root.querySelector('.results, .empty-preview');
     if (results) results.outerHTML = resultsView();
     const previewButton = root.querySelector('[data-action="preview"]');
-    if (previewButton) previewButton.disabled = !state.orderText.trim() || !state.locationId || !state.locations.some((item) => item.active) || state.locationsLoading || state.busy !== '';
+    if (previewButton) previewButton.disabled = !state.orderText.trim() || !state.locationId || !state.locations.some((item) => item.active) || (state.action === 'in_stock' && (!Number.isSafeInteger(Number(state.quantity)) || Number(state.quantity) <= 0)) || state.locationsLoading || state.busy !== '';
   }
   if (event.target.id === 'quantity') {
     state.quantity = event.target.value;
@@ -485,10 +520,16 @@ root.addEventListener('click', async (event) => {
   if (action === 'logout') {
     button.disabled = true;
     try { await request('/api/auth/logout', { method: 'POST' }); }
-    catch (error) { state.error = error.message || 'Could not end the session.'; }
+    catch (error) {
+      state.error = error.message || 'Could not end the session.';
+      render();
+      return;
+    }
     state.authenticated = false;
     state.locations = [];
     state.locationId = '';
+    state.orderText = '';
+    state.loginError = '';
     clearOperation();
     render();
   }

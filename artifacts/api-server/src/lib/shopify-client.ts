@@ -5,6 +5,18 @@ export const SHOPIFY_API_VERSION = "2026-10";
 const GRAPHQL_PATH = `/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
 const connectors = new ReplitConnectors();
 
+export function getShopifySetupError(): string | null {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+  if (Boolean(domain) !== Boolean(token)) {
+    return "Direct Shopify setup is incomplete. Set both SHOPIFY_STORE_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN in Replit Secrets, or remove both to use the connected Shopify store.";
+  }
+  if (domain && !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(domain.trim())) {
+    return "SHOPIFY_STORE_DOMAIN must be the store's plain name.myshopify.com domain, without a protocol or path.";
+  }
+  return null;
+}
+
 type ShopifyGraphQLError = {
   message?: string;
   extensions?: { code?: string };
@@ -47,18 +59,39 @@ export async function shopifyGraphql<T>(
   options: { readOnly?: boolean } = {},
 ): Promise<T> {
   const readOnly = options.readOnly ?? true;
+  const setupError = getShopifySetupError();
+  if (setupError) throw new ShopifyApiError(setupError);
   const attempts = readOnly ? 3 : 1;
   let lastError: ShopifyApiError | undefined;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     let response: Response;
     try {
-      response = await connectors.proxy("shopify-store", GRAPHQL_PATH, {
+      const requestOptions = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, variables }),
-      });
+        signal: AbortSignal.timeout(20000),
+      };
+      if (process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
+        response = await fetch(
+          `https://${process.env.SHOPIFY_STORE_DOMAIN.trim()}${GRAPHQL_PATH}`,
+          {
+            ...requestOptions,
+            headers: {
+              ...requestOptions.headers,
+              "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_ACCESS_TOKEN,
+            },
+          },
+        );
+      } else {
+        response = await connectors.proxy("shopify-store", GRAPHQL_PATH, requestOptions);
+      }
     } catch {
+      if (readOnly && attempt < attempts - 1) {
+        await wait(350 * 2 ** attempt);
+        continue;
+      }
       throw new ShopifyApiError(
         "Could not reach the connected Shopify store. Check its Replit connection and try again.",
       );

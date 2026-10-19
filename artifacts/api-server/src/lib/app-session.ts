@@ -8,6 +8,7 @@ import type { Request, Response } from "express";
 
 export const SESSION_COOKIE = "sbsm_session";
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
+const sessions = new Map<string, AppSession>();
 
 export interface AppSession {
   id: string;
@@ -51,7 +52,9 @@ export function getAppSession(req: Request): AppSession | null {
     ) {
       return null;
     }
-    return { id: parsed.id, expiresAt: parsed.expiresAt };
+    const live = sessions.get(parsed.id);
+    if (!live || live.expiresAt !== parsed.expiresAt) return null;
+    return live;
   } catch {
     return null;
   }
@@ -60,6 +63,10 @@ export function getAppSession(req: Request): AppSession | null {
 export function issueAppSession(res: Response, req: Request): AppSession {
   const expiresAt = Date.now() + SESSION_DURATION_MS;
   const session: AppSession = { id: randomUUID(), expiresAt };
+  for (const [id, existing] of sessions) {
+    if (existing.expiresAt <= Date.now()) sessions.delete(id);
+  }
+  sessions.set(session.id, session);
   const payload = Buffer.from(JSON.stringify(session)).toString("base64url");
   const signed = signature(payload);
   if (!signed) throw new Error("SESSION_SECRET is not configured.");
@@ -77,6 +84,8 @@ export function issueAppSession(res: Response, req: Request): AppSession {
 }
 
 export function clearAppSession(res: Response, req: Request): void {
+  const session = getAppSession(req);
+  if (session) sessions.delete(session.id);
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
     secure:

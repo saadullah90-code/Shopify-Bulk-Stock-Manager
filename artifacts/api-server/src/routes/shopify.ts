@@ -92,14 +92,10 @@ interface OrderLinesData {
             inventoryItem: {
               id: string;
               tracked: boolean | null;
-              inventoryLevels: {
-                edges: Array<{
-                  node: {
-                    location: { id: string; name: string; isActive: boolean };
-                    quantities: Array<{ name: string; quantity: number }>;
-                  };
-                }>;
-              };
+              inventoryLevel: {
+                location: { id: string; name: string; isActive: boolean };
+                quantities: Array<{ name: string; quantity: number }>;
+              } | null;
             } | null;
           } | null;
         };
@@ -120,13 +116,9 @@ interface InventoryItemData {
   inventoryItem: {
     id: string;
     tracked: boolean | null;
-    inventoryLevels: {
-      edges: Array<{
-        node: {
-          quantities: Array<{ name: string; quantity: number }>;
-        };
-      }>;
-    };
+    inventoryLevel: {
+      quantities: Array<{ name: string; quantity: number }>;
+    } | null;
   } | null;
 }
 
@@ -192,7 +184,7 @@ const ORDER_LINES_QUERY = `
     order(id: $id) {
       id
       name
-      lineItems(first: 250, after: $after) {
+      lineItems(first: 50, after: $after) {
         edges {
           cursor
           node {
@@ -206,13 +198,9 @@ const ORDER_LINES_QUERY = `
               inventoryItem {
                 id
                 tracked
-                inventoryLevels(first: 1, locationIds: [$locationId]) {
-                  edges {
-                    node {
-                      location { id name isActive }
-                      quantities(names: ["available"]) { name quantity }
-                    }
-                  }
+                inventoryLevel(locationId: $locationId) {
+                  location { id name isActive }
+                  quantities(names: ["available"]) { name quantity }
                 }
               }
             }
@@ -229,10 +217,8 @@ const INVENTORY_ITEM_QUERY = `
     inventoryItem(id: $id) {
       id
       tracked
-      inventoryLevels(first: 1, locationIds: [$locationId]) {
-        edges {
-          node { quantities(names: ["available"]) { name quantity } }
-        }
+      inventoryLevel(locationId: $locationId) {
+        quantities(names: ["available"]) { name quantity }
       }
     }
   }
@@ -271,7 +257,7 @@ async function fetchLocations(): Promise<Location[]> {
   const results: Location[] = [];
   let after: string | null = null;
   do {
-    const data = await shopifyGraphql<LocationsData>(LOCATIONS_QUERY, { after });
+    const data: LocationsData = await shopifyGraphql<LocationsData>(LOCATIONS_QUERY, { after });
     for (const edge of data.locations.edges) {
       if (edge.node.isActive) {
         results.push({
@@ -319,7 +305,7 @@ async function findExactOrder(number: string): Promise<
   const exact: Array<{ id: string; name: string }> = [];
   let pages = 0;
   do {
-    const data = await shopifyGraphql<OrderSearchData>(ORDER_SEARCH_QUERY, {
+    const data: OrderSearchData = await shopifyGraphql<OrderSearchData>(ORDER_SEARCH_QUERY, {
       after,
       query: `name:#${number}`,
     });
@@ -345,16 +331,14 @@ async function findExactOrder(number: string): Promise<
 }
 
 function getAvailableQuantity(
-  levels:
+  level:
     | {
-        edges: Array<{
-          node: { quantities: Array<{ name: string; quantity: number }> };
-        }>;
+        quantities: Array<{ name: string; quantity: number }>;
       }
     | null
     | undefined,
 ): number | null {
-  const available = levels?.edges[0]?.node.quantities.find(
+  const available = level?.quantities.find(
     (quantity) => quantity.name === "available",
   );
   return typeof available?.quantity === "number" ? available.quantity : null;
@@ -370,7 +354,7 @@ async function addOrderLines(
   let pageCount = 0;
 
   do {
-    const data = await shopifyGraphql<OrderLinesData>(ORDER_LINES_QUERY, {
+    const data: OrderLinesData = await shopifyGraphql<OrderLinesData>(ORDER_LINES_QUERY, {
       id: order.id,
       after,
       locationId,
@@ -388,17 +372,18 @@ async function addOrderLines(
         continue;
       }
 
-      const level = inventoryItem?.inventoryLevels.edges[0]?.node;
+      const level = inventoryItem?.inventoryLevel;
+      const eligible = Boolean(variant?.product && inventoryItem?.id);
       grouped.set(itemId, {
         inventoryItemId: itemId,
         productTitle: variant?.product?.title ?? line.title ?? "Deleted product",
         variantTitle: variant?.title ?? line.title ?? "Unavailable variant",
         orderNumbers: new Set([entered]),
-        currentQuantity: getAvailableQuantity(inventoryItem?.inventoryLevels),
+        currentQuantity: getAvailableQuantity(inventoryItem?.inventoryLevel),
         tracked: inventoryItem?.tracked === true,
         inventoryPolicy: variant?.inventoryPolicy ?? null,
-        eligible: Boolean(inventoryItem?.id),
-        skipReason: inventoryItem?.id
+        eligible,
+        skipReason: eligible
           ? null
           : "The product variant or inventory item was deleted or could not be resolved.",
         requiresActivation: Boolean(inventoryItem?.id && !level),
@@ -432,7 +417,7 @@ function toVariantResult(
       ? "Applying will activate inventory for this variant at the selected location."
       : null,
     !item.tracked && item.eligible
-      ? "Inventory tracking is currently off and will be enabled for this variant."
+      ? "Inventory tracking is currently off and will be enabled for this variant. Tracking is a variant-level setting; quantities will change only at the selected location."
       : null,
   ]
     .filter(Boolean)
@@ -633,6 +618,15 @@ async function updateVariant(
     };
   }
 
+  let trackingEnabled = false;
+  let quantityUpdateAccepted = false;
+  const failure = (message: string): VariantResult => ({
+    ...item,
+    tracked: trackingEnabled || item.tracked,
+    trackingWillBeEnabled: trackingEnabled ? false : item.trackingWillBeEnabled,
+    updateStatus: "failed",
+    updateMessage: `${trackingEnabled ? "Tracking was enabled. " : ""}${message}`,
+  });
   try {
     const initial = await readInventoryItem(item.inventoryItemId, locationId);
     if (!initial) {
@@ -642,7 +636,7 @@ async function updateVariant(
         updateMessage: "The inventory item no longer exists; preview the order again.",
       };
     }
-    const initialQuantity = getAvailableQuantity(initial.inventoryLevels);
+    const initialQuantity = getAvailableQuantity(initial.inventoryLevel);
     if (
       (initial.tracked === true) !== item.tracked ||
       initialQuantity !== item.currentQuantity
@@ -675,34 +669,34 @@ async function updateVariant(
         trackingData.inventoryItemUpdate.userErrors,
       );
       if (trackingError || !trackingData.inventoryItemUpdate.inventoryItem?.tracked) {
-        return {
-          ...item,
-          updateStatus: "failed",
-          updateMessage: trackingError ?? "Shopify did not enable inventory tracking.",
-        };
+        return failure(trackingError ?? "Shopify did not enable inventory tracking.");
       }
+      trackingEnabled = true;
     }
 
     const current = await readInventoryItem(item.inventoryItemId, locationId);
     if (!current) {
-      return {
-        ...item,
-        updateStatus: "failed",
-        updateMessage: "The inventory item disappeared before its quantity was set.",
-      };
+      return failure("The inventory item disappeared before its quantity was set.");
     }
 
-    const activeQuantity = getAvailableQuantity(current.inventoryLevels);
-    if (!current.inventoryLevels.edges.length) {
+    const activeQuantity = getAvailableQuantity(current.inventoryLevel);
+    if (
+      Boolean(current.inventoryLevel) !== Boolean(initial.inventoryLevel) ||
+      activeQuantity !== initialQuantity
+    ) {
+      return failure(
+        "The location inventory changed while applying. Its quantity was not overwritten; create a fresh preview.",
+      );
+    }
+    if (!current.inventoryLevel) {
       const activationData = await shopifyMutation<InventoryActivateData>(
         (key) => `
-          mutation ActivateInventory($inventoryItemId: ID!, $locationId: ID!, $available: Int)
-            @idempotent(key: "${key}") {
+          mutation ActivateInventory($inventoryItemId: ID!, $locationId: ID!, $available: Int) {
             inventoryActivate(
               inventoryItemId: $inventoryItemId,
               locationId: $locationId,
               available: $available
-            ) {
+            ) @idempotent(key: "${key}") {
               inventoryLevel { quantities(names: ["available"]) { name quantity } }
               userErrors { field message }
             }
@@ -717,20 +711,12 @@ async function updateVariant(
       const activation = activationData.inventoryActivate;
       const activationError = shopifyUserErrors(activation.userErrors);
       if (activationError || !activation.inventoryLevel) {
-        return {
-          ...item,
-          updateStatus: "failed",
-          updateMessage: activationError ?? "Shopify did not activate inventory at the selected location.",
-        };
+        return failure(activationError ?? "Shopify did not activate inventory at the selected location.");
       }
+      quantityUpdateAccepted = true;
     } else {
       if (activeQuantity === null) {
-        return {
-          ...item,
-          updateStatus: "failed",
-          updateMessage:
-            "Shopify did not return the current available quantity. No update was attempted.",
-        };
+        return failure("Shopify did not return the current available quantity. No quantity update was attempted.");
       }
       const input = {
         name: "available",
@@ -747,9 +733,8 @@ async function updateVariant(
       };
       const setData = await shopifyMutation<InventorySetData>(
         (key) => `
-          mutation SetAvailableQuantity($input: InventorySetQuantitiesInput!)
-            @idempotent(key: "${key}") {
-            inventorySetQuantities(input: $input) {
+          mutation SetAvailableQuantity($input: InventorySetQuantitiesInput!) {
+            inventorySetQuantities(input: $input) @idempotent(key: "${key}") {
               inventoryAdjustmentGroup { id }
               userErrors { field message }
             }
@@ -760,22 +745,15 @@ async function updateVariant(
       const setResult = setData.inventorySetQuantities;
       const setError = shopifyUserErrors(setResult.userErrors);
       if (setError || !setResult.inventoryAdjustmentGroup) {
-        return {
-          ...item,
-          updateStatus: "failed",
-          updateMessage: setError ?? "Shopify did not confirm the inventory adjustment.",
-        };
+        return failure(setError ?? "Shopify did not confirm the inventory adjustment.");
       }
+      quantityUpdateAccepted = true;
     }
 
     const verified = await readInventoryItem(item.inventoryItemId, locationId);
-    const resultingQuantity = getAvailableQuantity(verified?.inventoryLevels);
+    const resultingQuantity = getAvailableQuantity(verified?.inventoryLevel);
     if (resultingQuantity !== item.targetQuantity) {
-      return {
-        ...item,
-        updateStatus: "failed",
-        updateMessage: `Shopify did not confirm the target quantity of ${item.targetQuantity}. Current quantity: ${resultingQuantity ?? "unknown"}.`,
-      };
+      return failure(`Shopify did not verify the target quantity of ${item.targetQuantity}. Current quantity: ${resultingQuantity ?? "unknown"}. Preview again before retrying.`);
     }
     return {
       ...item,
@@ -787,14 +765,12 @@ async function updateVariant(
       updateMessage: `Verified at ${resultingQuantity} available.`,
     };
   } catch (error) {
-    return {
-      ...item,
-      updateStatus: "failed",
-      updateMessage:
-        error instanceof ShopifyApiError
-          ? error.message
-          : "The Shopify update failed. Preview again before retrying.",
-    };
+    const message = error instanceof ShopifyApiError
+      ? error.message
+      : "The Shopify update failed.";
+    return failure(
+      `${quantityUpdateAccepted ? "Shopify accepted an update, but verification did not finish. " : ""}${message} Preview again before retrying.`,
+    );
   }
 }
 
@@ -824,6 +800,7 @@ router.post("/shopify/apply", async (req, res): Promise<void> => {
     return;
   }
 
+  preview.consumed = true;
   try {
     const locations = await fetchLocations();
     if (!locations.some((location) => location.id === preview.locationId)) {
@@ -835,7 +812,6 @@ router.post("/shopify/apply", async (req, res): Promise<void> => {
       return;
     }
 
-    preview.consumed = true;
     const variants: VariantResult[] = [];
     for (const item of preview.variants) {
       if (!item.eligible) {

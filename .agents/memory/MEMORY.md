@@ -1,0 +1,1 @@
+- [Shopify inventory API cautions](shopify-inventory-api.md) — version-specific requirements can differ from sample queries; trust cautions and live schema checks.
