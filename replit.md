@@ -10,7 +10,8 @@ A private order-based tool for previewing and applying exact Shopify inventory q
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/bulk-stock-manager run dev` — web frontend (use its managed workflow)
 - Required secrets: `APP_PASSWORD`, `SESSION_SECRET`
-- Shopify uses the project's connected store by default; optional direct mode requires both `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN`.
+- Shopify authentication is direct-only, using `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN` from server-side Replit Secrets. Never use or enable a Replit Shopify connector or OAuth.
+- Do not request a Client ID, Client Secret, OAuth Redirect URL, or connector configuration. The user supplies an existing custom app Admin API token privately through Secrets.
 
 ## Stack
 

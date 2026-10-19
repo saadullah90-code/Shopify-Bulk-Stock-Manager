@@ -4,25 +4,21 @@ A private, order-based Shopify inventory tool with an Express backend and a plai
 
 ## Setup
 
-### Connected Shopify store
+### Direct Shopify custom app authentication
 
-The app uses this project's **Shopify connection** by default. Claim the store through the link Shopify provided, and ensure it is the store you intend to change. Shopify authorization stays on the server through Replit's connector SDK.
+This app calls your existing store's Shopify Admin GraphQL API directly from Express using Node.js fetch. It does not use a Replit Shopify connector, OAuth, or a provisioned store.
 
-Set these in **Replit Secrets**:
+Set these four values privately in **Replit Secrets**:
 
 - `APP_PASSWORD` — a strong, unique password for this tool.
 - `SESSION_SECRET` — a long, random secret used to sign browser sessions.
 
-### Optional: use an existing store directly
-
-To use a Shopify Admin API token instead of the project's connected store, add **both**:
-
 - `SHOPIFY_STORE_DOMAIN` — the plain `your-store.myshopify.com` domain, without `https://` or a path.
 - `SHOPIFY_ADMIN_ACCESS_TOKEN` — the store's Admin API access token.
 
-If only one is set, the app reports a setup error. If neither is set, the Replit Shopify connection is used. Do not put real values in `.env.example`, source code, URLs, or chat.
+Both Shopify values are mandatory. Missing or malformed configuration produces a clear error instead of falling back to another store. No Client ID, Client Secret, redirect URL, or connector configuration is needed. Do not put real values in `.env.example`, source code, URLs, or chat. Restart the API workflow after updating Secrets.
 
-Required permissions are `read_orders`, `read_products`, `read_inventory`, `write_inventory`, and `read_locations`. Older orders can require approved `read_all_orders` access; otherwise Shopify normally limits order access to the recent order window. This implementation does **not** use `write_products`.
+Required permissions are `read_orders`, `read_products`, `read_inventory`, `write_inventory`, and `read_locations`. The app checks the token's granted scopes before loading locations, previewing, or applying. A corresponding write scope also satisfies read access. Missing permissions are named explicitly. Older orders can require approved `read_all_orders` access; otherwise Shopify normally limits order access to the recent 60-day window. If permissions change, follow Shopify's instructions to update/reinstall the custom app and replace the stored token if needed. This implementation does **not** use `write_products`.
 
 The Admin GraphQL API version is pinned to **2026-10** in `artifacts/api-server/src/lib/shopify-client.ts`. Follow version-specific Shopify documentation when upgrading; quantity and activation mutations require an `@idempotent` directive in this version.
 

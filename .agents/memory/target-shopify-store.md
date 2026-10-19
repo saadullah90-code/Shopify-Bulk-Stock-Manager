@@ -7,4 +7,4 @@ Connect this inventory tool to the user's existing Shopify store, not a newly pr
 
 **Why:** The user explicitly confirmed that they want their existing store connected after the provisioned store showed an unfamiliar default location and did not contain their order.
 
-**How to apply:** Use an existing-store Admin API connection. Do not provision another store, seed data, or assume the provisioned store contains the user's orders.
+**How to apply:** Treat unfamiliar default locations and missing known orders as possible wrong-store symptoms. Verify the intended store read-only before diagnosing order matching; never substitute a newly provisioned store. Authentication constraints are in replit.md.

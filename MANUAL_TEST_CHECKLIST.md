@@ -2,8 +2,8 @@
 
 Use a test store or an explicitly authorized test order. Both stock actions change real inventory. Note the intended test location and final quantity before beginning.
 
-- [ ] Without `APP_PASSWORD` or `SESSION_SECRET`, login shows a clear setup error. In direct-token mode, a missing domain/token pair also shows a safe setup error.
-- [ ] Invalid direct credentials or revoked connection access gives a safe authentication error, without returning a token.
+- [ ] Without `APP_PASSWORD` or `SESSION_SECRET`, login shows a clear setup error. Missing Shopify Secrets names are shown explicitly when loading locations or previewing, with no fallback store.
+- [ ] Invalid custom app credentials give a safe authentication error; missing permissions are named explicitly, without returning credentials.
 - [ ] A wrong app password is rejected; correct login works; logout prevents reuse of the old session.
 - [ ] One known test order resolves to the exact Shopify order name and expected variants.
 - [ ] Lines, commas, and spaces work; `#1001` and `1001` are deduplicated.

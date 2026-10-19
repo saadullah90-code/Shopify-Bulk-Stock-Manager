@@ -10,6 +10,7 @@ import {
 import { getAppSession, hasSameOrigin } from "../lib/app-session";
 import {
   ShopifyApiError,
+  assertShopifyPermissions,
   shopifyGraphql,
   shopifyMutation,
   shopifyUserErrors,
@@ -249,11 +250,12 @@ function handleShopifyError(req: Request, res: Response, error: unknown): void {
     setError(res, 502, error.message);
     return;
   }
-  req.log.error({ err: error }, "Unexpected inventory operation failure");
+  req.log.error("Unexpected inventory operation failure");
   setError(res, 502, "The Shopify request failed. Try again shortly.");
 }
 
 async function fetchLocations(): Promise<Location[]> {
+  await assertShopifyPermissions();
   const results: Location[] = [];
   let after: string | null = null;
   do {
@@ -530,7 +532,7 @@ router.post("/shopify/preview", async (req, res): Promise<void> => {
           reason:
             found.status === "ambiguous"
               ? "More than one exact Shopify order match was returned; no variant from this order will be changed."
-              : "No exact order-number match was found. It may be inaccessible or outside the connected account's permissions.",
+              : "No exact order-number match was found in the configured store. Confirm the order number and store. Orders older than 60 days require approved read_all_orders permission in addition to read_orders.",
         });
         continue;
       }
