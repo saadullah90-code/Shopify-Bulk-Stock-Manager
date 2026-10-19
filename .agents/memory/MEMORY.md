@@ -1,1 +1,2 @@
 - [Shopify inventory API cautions](shopify-inventory-api.md) — version-specific requirements can differ from sample queries; trust cautions and live schema checks.
+- [Target Shopify store](target-shopify-store.md) — this inventory tool must manage the user's existing store, not a newly provisioned store.
