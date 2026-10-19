@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { VariantResult, InventoryLocationResult, OrderResult } from "@workspace/api-zod";
+import type { VariantResult, InventoryLocationResult, OrderResult, ProductSize } from "@workspace/api-zod";
 import { assertShopifyPermissions, ShopifyApiError, shopifyGraphql, shopifyMutation, shopifyUserErrors } from "./shopify-client";
 
 export type StockAction = "sold_out" | "in_stock";
@@ -73,7 +73,7 @@ export async function searchShopifyProducts(
         nodes { id title status }
         pageInfo { hasNextPage endCursor }
       }
-    }`, { query: `title:"${escaped}"`, after });
+    }`, { query: `title:*"${escaped}"*`, after });
   return {
     products: data.products.nodes,
     hasNextPage: data.products.pageInfo.hasNextPage,
@@ -87,7 +87,7 @@ export async function readShopifyProductVariants(
   productId: string;
   title: string;
   status: string;
-  variants: Array<Omit<ShopifyVariant, "inventoryPolicy">>;
+  variants: ProductSize[];
   hasNextPage: boolean;
   endCursor: string | null;
 } | null> {
@@ -114,7 +114,11 @@ export async function readShopifyProductVariants(
     productId: product.id,
     title: product.title,
     status: product.status,
-    variants: product.variants.nodes.map(({ inventoryPolicy: _policy, ...variant }) => variant),
+    variants: product.variants.nodes.map(({ inventoryItem, inventoryPolicy: _policy, ...variant }) => ({
+      ...variant,
+      inventoryItemId: inventoryItem?.id ?? null,
+      tracked: inventoryItem?.tracked ?? null,
+    })),
     hasNextPage: product.variants.pageInfo.hasNextPage,
     endCursor: nextPage(product.variants.pageInfo, after),
   };

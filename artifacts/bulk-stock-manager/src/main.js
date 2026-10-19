@@ -354,7 +354,6 @@ function productSection() {
         </div>
       </div>
       <p class="product-safety-note">In Stock turns tracking off; it does not set or restore quantities. Sold Out previews every active stocked location and sets its available quantity to 0. Nothing changes until you confirm the review.</p>` : ''}
-      ${state.applyResult && state.previewSource === 'product' ? '<p class="product-search-hint">Update results are shown above. Refresh sizes to read availability again.</p>' : ''}
     </section>` : ''}
     ${state.previewSource === 'product' ? resultsView() : ''}
   </section>`;
@@ -577,6 +576,28 @@ async function previewProduct(action) {
   }
 }
 
+async function refreshProductAvailability() {
+  const productId = state.productId;
+  const visibleCount = Math.max(1, state.productVariants.length);
+  const variants = [];
+  let after = null;
+  let lastPage;
+  do {
+    const params = new URLSearchParams({ productId });
+    if (after) params.set('after', after);
+    lastPage = await request(`/api/shopify/product-variants?${params}`);
+    if (state.productId !== productId) return;
+    variants.push(...lastPage.variants);
+    after = lastPage.hasNextPage ? lastPage.endCursor : null;
+  } while (after && variants.length < visibleCount);
+  state.productVariants = variants;
+  state.productTitle = lastPage.title;
+  state.productStatus = lastPage.status;
+  state.variantCursor = lastPage.endCursor;
+  state.variantHasNextPage = lastPage.hasNextPage;
+  state.selectedVariantIds = state.selectedVariantIds.filter((id) => variants.some((variant) => variant.id === id && variant.inventoryItemId));
+}
+
 async function applyChanges() {
   if (!state.preview?.previewId || !state.confirmed || state.busy) return;
   if ((state.preview.blockingIssues || []).length) return;
@@ -604,6 +625,12 @@ async function applyChanges() {
     if (!state.applyResult || !Array.isArray(state.applyResult.variants)) {
       state.applyResult = null;
       state.error = 'The apply response was incomplete. Refresh inventory before continuing.';
+    } else if (state.previewSource === 'product' && state.productId) {
+      try {
+        await refreshProductAvailability();
+      } catch (error) {
+        state.productError = `Update results are shown below, but availability could not be refreshed: ${error.message || 'Use Refresh to reload the sizes.'}`;
+      }
     }
   } catch (error) {
     state.error = error.message || 'The inventory update could not be completed.';

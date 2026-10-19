@@ -32,3 +32,9 @@ Customer scopes and protected customer-data approval are separate restrictions.
 **Why:** Reading an order's customer required `read_customers`; an independent order billing-name query also failed because Shopify had not approved access to personally identifiable customer data. Granting a scope alone must not be promised to unlock names.
 
 **How to apply:** Keep purchaser-name access isolated from stock previews. Show the real name only when Shopify returns it; otherwise explain the missing scope/approval. Never invent a name or substitute a shipping recipient.
+
+For partial product-title searches, put wildcard markers outside the escaped, quoted search text.
+
+**Why:** Live Shopify title searches returned no results for a quoted partial name even though matching products existed. Wildcards inside the quotes were treated literally; outside wildcards matched both single-word and multi-word partial names.
+
+**How to apply:** Preserve the escaped quoted value and its outside wildcard markers. Verify search syntax against real read-only data before simplifying it.

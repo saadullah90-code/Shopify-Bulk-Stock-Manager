@@ -70,10 +70,10 @@ router.get("/shopify/locations", async (req, res): Promise<void> => {
 router.get("/shopify/products", async (req, res): Promise<void> => {
   if (!session(req, res)) return;
   const parsed = SearchShopifyProductsQueryParams.safeParse({
-    search: req.query.search,
+    search: typeof req.query.search === "string" ? req.query.search.trim() : "",
     after: req.query.after,
   });
-  if (!parsed.success || typeof req.query.search !== "string" || !req.query.search.trim()) {
+  if (!parsed.success || (req.query.after !== undefined && typeof req.query.after !== "string")) {
     res.status(400).json({ error: "Enter at least 2 characters from a product name." });
     return;
   }
