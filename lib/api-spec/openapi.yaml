@@ -126,6 +126,94 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /shopify/products:
+    get:
+      operationId: searchShopifyProducts
+      tags: [shopify]
+      summary: Search Shopify products by title
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: search
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 80 }
+        - name: after
+          in: query
+          required: false
+          schema: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Matching Shopify products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSearchResponse"
+        "400":
+          description: Search text is too short
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /shopify/product-variants:
+    get:
+      operationId: getShopifyProductVariants
+      tags: [shopify]
+      summary: Read all sizes and live availability for a product
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^gid://shopify/Product/[0-9]+$' }
+        - name: after
+          in: query
+          required: false
+          schema: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Product variants and their live Shopify availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductVariantsResponse"
+        "400":
+          description: Invalid Shopify product ID or variant cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /shopify/preview:
     post:
       operationId: previewOrders
@@ -214,6 +302,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /shopify/product-preview:
+    post:
+      operationId: previewShopifyProductStock
+      tags: [shopify]
+      summary: Preview a confirmed set of product variants before updating them
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductStockSelection"
+      responses:
+        "200":
+          description: Read-only inventory preview for the selected sizes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewResponse"
+        "400":
+          description: Invalid selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes:
     SessionCookie:
@@ -266,6 +392,63 @@ components:
           items:
             $ref: "#/components/schemas/Location"
       required: [locations]
+    ProductSearchItem:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string }
+      required: [id, title, status]
+    ProductSearchResponse:
+      type: object
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/ProductSearchItem" }
+        hasNextPage: { type: boolean }
+        endCursor: { type: ["string", "null"] }
+      required: [products, hasNextPage, endCursor]
+    ProductSize:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        sku: { type: ["string", "null"] }
+        availableForSale: { type: boolean }
+        inventoryQuantity: { type: ["integer", "null"] }
+        inventoryItemId: { type: ["string", "null"] }
+        tracked: { type: ["boolean", "null"] }
+      required: [id, title, sku, availableForSale, inventoryQuantity, inventoryItemId, tracked]
+    ProductVariantsResponse:
+      type: object
+      properties:
+        productId: { type: string }
+        title: { type: string }
+        status: { type: string }
+        variants:
+          type: array
+          items: { $ref: "#/components/schemas/ProductSize" }
+        hasNextPage: { type: boolean }
+        endCursor: { type: ["string", "null"] }
+      required: [productId, title, status, variants, hasNextPage, endCursor]
+    ProductStockSelection:
+      type: object
+      properties:
+        productId:
+          type: string
+          pattern: '^gid://shopify/Product/[0-9]+$'
+        variantIds:
+          type: array
+          minItems: 1
+          maxItems: 25
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^gid://shopify/ProductVariant/[0-9]+$'
+        action:
+          type: string
+          enum: [sold_out, in_stock]
+      required: [productId, variantIds, action]
     PreviewInput:
       type: object
       properties:

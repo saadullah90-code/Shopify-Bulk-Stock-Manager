@@ -46,6 +46,80 @@ export async function discoverLocations(): Promise<Location[]> {
   return locations;
 }
 
+export interface ShopifyProduct {
+  id: string;
+  title: string;
+  status: string;
+}
+
+interface ShopifyVariant {
+  id: string;
+  title: string;
+  sku: string | null;
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  inventoryItem: { id: string; tracked: boolean } | null;
+  inventoryPolicy: "DENY" | "CONTINUE";
+}
+
+export async function searchShopifyProducts(
+  search: string, after: string | null,
+): Promise<{ products: ShopifyProduct[]; hasNextPage: boolean; endCursor: string | null }> {
+  await assertShopifyPermissions();
+  const escaped = search.trim().replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const data: { products: Connection<ShopifyProduct> } = await shopifyGraphql(`
+    query SearchProductsByTitle($query: String!, $after: String) {
+      products(first: 20, after: $after, query: $query, sortKey: TITLE) {
+        nodes { id title status }
+        pageInfo { hasNextPage endCursor }
+      }
+    }`, { query: `title:"${escaped}"`, after });
+  return {
+    products: data.products.nodes,
+    hasNextPage: data.products.pageInfo.hasNextPage,
+    endCursor: nextPage(data.products.pageInfo, after),
+  };
+}
+
+export async function readShopifyProductVariants(
+  productId: string, after: string | null,
+): Promise<{
+  productId: string;
+  title: string;
+  status: string;
+  variants: Array<Omit<ShopifyVariant, "inventoryPolicy">>;
+  hasNextPage: boolean;
+  endCursor: string | null;
+} | null> {
+  await assertShopifyPermissions();
+  const data: { product: {
+    id: string; title: string; status: string;
+    variants: Connection<ShopifyVariant>;
+  } | null } = await shopifyGraphql(`
+    query ProductVariantAvailability($id: ID!, $after: String) {
+      product(id: $id) {
+        id title status
+        variants(first: 100, after: $after) {
+          nodes {
+            id title sku availableForSale inventoryQuantity inventoryPolicy
+            inventoryItem { id tracked }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }`, { id: productId, after });
+  const product = data.product;
+  if (!product) return null;
+  return {
+    productId: product.id,
+    title: product.title,
+    status: product.status,
+    variants: product.variants.nodes.map(({ inventoryPolicy: _policy, ...variant }) => variant),
+    hasNextPage: product.variants.pageInfo.hasNextPage,
+    endCursor: nextPage(product.variants.pageInfo, after),
+  };
+}
+
 export async function readInventory(id: string, locationDetails = true): Promise<Inventory | null> {
   const levels: Level[] = [];
   let after: string | null = null;
@@ -214,6 +288,14 @@ export async function buildStockPreview(
       else grouped.set(key, { line, orderNumbers: new Set([entered.entered]) });
     }
   }
+  const { variants, blockingIssues } = await buildVariantResults(grouped, action);
+  return { orders, variants, blockingIssues };
+}
+
+async function buildVariantResults(
+  grouped: Map<string, { line: Line; orderNumbers: Set<string> }>,
+  action: StockAction,
+): Promise<{ variants: VariantResult[]; blockingIssues: string[] }> {
   // Tracking is variant-wide. In Stock does not depend on location metadata
   // and must not require read_locations just to set tracked:false.
   let locations: Location[] = [];
@@ -254,7 +336,70 @@ export async function buildStockPreview(
       updateStatus: skipReason ? "skipped" : "pending", updateMessage: skipReason,
     });
   }
-  return { orders, variants, blockingIssues };
+  return { variants, blockingIssues };
+}
+
+export async function buildProductStockPreview(
+  productId: string, variantIds: string[], action: StockAction,
+): Promise<{ orders: OrderResult[]; variants: VariantResult[]; blockingIssues: string[] }> {
+  await assertShopifyPermissions();
+  const remaining = new Set(variantIds);
+  if (remaining.size !== variantIds.length || remaining.size < 1 || remaining.size > 25) {
+    throw new ShopifyApiError("Select between 1 and 25 different sizes for one review.");
+  }
+  const grouped = new Map<string, { line: Line; orderNumbers: Set<string> }>();
+  let after: string | null = null;
+  let productTitle: string | undefined;
+  let productStatus: string | undefined;
+  do {
+    const data: { product: {
+      id: string; title: string; status: string; variants: Connection<Pick<ShopifyVariant, "id" | "title" | "inventoryPolicy" | "inventoryItem">>;
+    } | null } = await shopifyGraphql(`
+      query VerifySelectedProductVariants($id: ID!, $after: String) {
+        product(id: $id) {
+          id title status
+          variants(first: 100, after: $after) {
+            nodes { id title inventoryPolicy inventoryItem { id } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }`, { id: productId, after });
+    const product = data.product;
+    if (!product) throw new ShopifyApiError("This Shopify product no longer exists. Search again.");
+    productTitle = product.title;
+    productStatus = product.status;
+    for (const selected of product.variants.nodes) {
+      if (!remaining.delete(selected.id)) continue;
+      if (!selected.inventoryItem) {
+        throw new ShopifyApiError(`"${selected.title}" has no Shopify inventory item and cannot be updated.`);
+      }
+      grouped.set(selected.inventoryItem.id, {
+        orderNumbers: new Set(),
+        line: {
+          id: selected.id,
+          title: selected.title,
+          variant: {
+            id: selected.id,
+            title: selected.title,
+            inventoryPolicy: selected.inventoryPolicy,
+            product: { title: product.title, status: product.status },
+            inventoryItem: selected.inventoryItem,
+          },
+        },
+      });
+    }
+    after = remaining.size
+      ? nextPage(product.variants.pageInfo, after)
+      : null;
+  } while (after);
+  if (remaining.size) {
+    throw new ShopifyApiError("One or more selected sizes no longer belong to this product. Reload its sizes and select again.");
+  }
+  if (!productTitle || !productStatus || !grouped.size) {
+    throw new ShopifyApiError("Shopify did not return the selected product sizes. Search again.");
+  }
+  const result = await buildVariantResults(grouped, action);
+  return { orders: [], ...result };
 }
 
 function sameSnapshot(item: VariantResult, current: Inventory): boolean {

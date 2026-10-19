@@ -36,10 +36,11 @@ A private order-based tool for previewing and applying exact Shopify inventory q
 ## Architecture decisions
 
 - Use one API instance because sessions and previews intentionally avoid a database. Restarts invalidate both.
-- A preview is read-only, short-lived, session-bound, and one-use. The apply endpoint accepts only its server-owned preview ID, never arbitrary client inventory IDs.
+- A preview is read-only, short-lived, session-bound, and one-use. The apply endpoint accepts only its server-owned preview ID, never arbitrary client inventory IDs. Product-based changes verify the selected variant IDs belong to the selected product.
 - Sold Out enables tracking and zeros every active stocked inventory location for the confirmed variants. Discover locations automatically, include inactive locations in the review, and verify all inventory-level pages after updates. Never activate unstocked sites merely to create zeros.
 - In Stock disables tracking only. Never invent, restore, or write quantities for In Stock. There is no manual location dropdown or quantity input.
 - In Stock must not require location-name or active-status access: show actual inventory location IDs with status unrequested. Only Sold Out needs full location metadata to safely choose active locations.
+- Product search uses Shopify title search and paginated variant availability. Product-based Sold Out and In Stock use the same reviewed and confirmed preview/apply safety checks as order-based changes; In Stock still only disables tracking.
 - Inactive locations are shown and skipped, not reactivated. Shopify's CONTINUE policy can permit selling at zero; disabling tracking does not change product status or channel availability. Do not silently change policy, status, or channels.
 
 ## Product

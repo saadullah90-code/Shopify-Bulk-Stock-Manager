@@ -23,11 +23,16 @@ import type {
   ApplyInput,
   ApplyResponse,
   ErrorResponse,
+  GetShopifyProductVariantsParams,
   HealthStatus,
   LocationsResponse,
   LoginInput,
   PreviewInput,
   PreviewResponse,
+  ProductSearchResponse,
+  ProductStockSelection,
+  ProductVariantsResponse,
+  SearchShopifyProductsParams,
   SessionStatus
 } from './api.schemas';
 
@@ -452,6 +457,174 @@ export function useGetLocations<TData = Awaited<ReturnType<typeof getLocations>>
 
 
 
+export const getSearchShopifyProductsUrl = (params: SearchShopifyProductsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/shopify/products?${stringifiedParams}` : `/api/shopify/products`
+}
+
+/**
+ * @summary Search Shopify products by title
+ */
+export const searchShopifyProducts = async (params: SearchShopifyProductsParams, options?: Parameters<typeof customFetch>[1]): Promise<ProductSearchResponse> => {
+
+  return customFetch<ProductSearchResponse>(getSearchShopifyProductsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchShopifyProductsQueryKey = (params?: SearchShopifyProductsParams,) => {
+    return [
+    `/api/shopify/products`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchShopifyProductsQueryOptions = <TData = Awaited<ReturnType<typeof searchShopifyProducts>>, TError = ErrorType<ErrorResponse>>(params: SearchShopifyProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchShopifyProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchShopifyProductsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchShopifyProducts>>> = ({ signal }) => searchShopifyProducts(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchShopifyProducts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchShopifyProductsQueryResult = NonNullable<Awaited<ReturnType<typeof searchShopifyProducts>>>
+export type SearchShopifyProductsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Search Shopify products by title
+ */
+
+export function useSearchShopifyProducts<TData = Awaited<ReturnType<typeof searchShopifyProducts>>, TError = ErrorType<ErrorResponse>>(
+ params: SearchShopifyProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchShopifyProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchShopifyProductsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetShopifyProductVariantsUrl = (params: GetShopifyProductVariantsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/shopify/product-variants?${stringifiedParams}` : `/api/shopify/product-variants`
+}
+
+/**
+ * @summary Read all sizes and live availability for a product
+ */
+export const getShopifyProductVariants = async (params: GetShopifyProductVariantsParams, options?: Parameters<typeof customFetch>[1]): Promise<ProductVariantsResponse> => {
+
+  return customFetch<ProductVariantsResponse>(getGetShopifyProductVariantsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetShopifyProductVariantsQueryKey = (params?: GetShopifyProductVariantsParams,) => {
+    return [
+    `/api/shopify/product-variants`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetShopifyProductVariantsQueryOptions = <TData = Awaited<ReturnType<typeof getShopifyProductVariants>>, TError = ErrorType<ErrorResponse>>(params: GetShopifyProductVariantsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShopifyProductVariants>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetShopifyProductVariantsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getShopifyProductVariants>>> = ({ signal }) => getShopifyProductVariants(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getShopifyProductVariants>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetShopifyProductVariantsQueryResult = NonNullable<Awaited<ReturnType<typeof getShopifyProductVariants>>>
+export type GetShopifyProductVariantsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read all sizes and live availability for a product
+ */
+
+export function useGetShopifyProductVariants<TData = Awaited<ReturnType<typeof getShopifyProductVariants>>, TError = ErrorType<ErrorResponse>>(
+ params: GetShopifyProductVariantsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShopifyProductVariants>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetShopifyProductVariantsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getPreviewOrdersUrl = () => {
 
 
@@ -626,5 +799,93 @@ export const useApplyChanges = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getApplyChangesMutationOptions(options));
+    }
+
+export const getPreviewShopifyProductStockUrl = () => {
+
+
+
+
+  return `/api/shopify/product-preview`
+}
+
+/**
+ * @summary Preview a confirmed set of product variants before updating them
+ */
+export const previewShopifyProductStock = async (productStockSelection: ProductStockSelection, options?: Parameters<typeof customFetch>[1]): Promise<PreviewResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PreviewResponse>(getPreviewShopifyProductStockUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(productStockSelection)
+  }
+);}
+
+
+
+
+
+export const getPreviewShopifyProductStockMutationKey = () => ['previewShopifyProductStock'] as const;
+
+export const getPreviewShopifyProductStockMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewShopifyProductStock>>, TError,PreviewShopifyProductStockMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewShopifyProductStock>>, TError,PreviewShopifyProductStockMutationVariables, TContext> => {
+
+const mutationKey = getPreviewShopifyProductStockMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewShopifyProductStock>>, PreviewShopifyProductStockMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewShopifyProductStock(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewShopifyProductStockMutationResult = NonNullable<Awaited<ReturnType<typeof previewShopifyProductStock>>>
+    export type PreviewShopifyProductStockMutationBody = BodyType<ProductStockSelection>
+    export type PreviewShopifyProductStockMutationError = ErrorType<ErrorResponse>
+    export type PreviewShopifyProductStockMutationVariables = {data: BodyType<ProductStockSelection>}
+
+    /**
+ * @summary Preview a confirmed set of product variants before updating them
+ */
+export const usePreviewShopifyProductStock = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewShopifyProductStock>>, TError,PreviewShopifyProductStockMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewShopifyProductStock>>,
+        TError,
+        PreviewShopifyProductStockMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPreviewShopifyProductStockMutationOptions(options));
     }
 

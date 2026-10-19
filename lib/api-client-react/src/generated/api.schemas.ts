@@ -35,6 +35,63 @@ export interface LocationsResponse {
   locations: Location[];
 }
 
+export interface ProductSearchItem {
+  id: string;
+  title: string;
+  status: string;
+}
+
+export interface ProductSearchResponse {
+  products: ProductSearchItem[];
+  hasNextPage: boolean;
+  /** @nullable */
+  endCursor: string | null;
+}
+
+export interface ProductSize {
+  id: string;
+  title: string;
+  /** @nullable */
+  sku: string | null;
+  availableForSale: boolean;
+  /** @nullable */
+  inventoryQuantity: number | null;
+  /** @nullable */
+  inventoryItemId: string | null;
+  /** @nullable */
+  tracked: boolean | null;
+}
+
+export interface ProductVariantsResponse {
+  productId: string;
+  title: string;
+  status: string;
+  variants: ProductSize[];
+  hasNextPage: boolean;
+  /** @nullable */
+  endCursor: string | null;
+}
+
+export type ProductStockSelectionAction = typeof ProductStockSelectionAction[keyof typeof ProductStockSelectionAction];
+
+
+export const ProductStockSelectionAction = {
+  sold_out: 'sold_out',
+  in_stock: 'in_stock',
+} as const;
+
+export interface ProductStockSelection {
+  /** @pattern ^gid://shopify/Product/[0-9]+$ */
+  productId: string;
+  /**
+     * @minItems 1
+     * @maxItems 25
+     * @items.pattern ^gid://shopify/ProductVariant/[0-9]+$
+     */
+  variantIds: string[];
+  action: ProductStockSelectionAction;
+}
+
 export type PreviewInputAction = typeof PreviewInputAction[keyof typeof PreviewInputAction];
 
 
@@ -191,4 +248,27 @@ export interface ApplyResponse {
   variants: VariantResult[];
   summary: Summary;
 }
+
+export type SearchShopifyProductsParams = {
+/**
+ * @minLength 2
+ * @maxLength 80
+ */
+search: string;
+/**
+ * @maxLength 500
+ */
+after?: string;
+};
+
+export type GetShopifyProductVariantsParams = {
+/**
+ * @pattern ^gid://shopify/Product/[0-9]+$
+ */
+productId: string;
+/**
+ * @maxLength 500
+ */
+after?: string;
+};
 

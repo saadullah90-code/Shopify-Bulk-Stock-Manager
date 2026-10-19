@@ -2,12 +2,16 @@ import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   ApplyChangesBody, ApplyChangesResponse, GetLocationsResponse,
-  PreviewOrdersBody, PreviewOrdersResponse, type PreviewResponse,
+  getShopifyProductVariantsQueryProductIdRegExp, GetShopifyProductVariantsResponse,
+  PreviewOrdersBody, PreviewOrdersResponse, PreviewShopifyProductStockBody,
+  PreviewShopifyProductStockResponse, SearchShopifyProductsQueryParams,
+  SearchShopifyProductsResponse, type PreviewResponse,
 } from "@workspace/api-zod";
 import { getAppSession, hasSameOrigin } from "../lib/app-session";
 import { ShopifyApiError, assertShopifyPermissions } from "../lib/shopify-client";
 import {
-  applyStockVariant, buildStockPreview, discoverLocations, parseOrders, stockSummary,
+  applyStockVariant, buildProductStockPreview, buildStockPreview, discoverLocations,
+  parseOrders, readShopifyProductVariants, searchShopifyProducts, stockSummary,
 } from "../lib/stock-manager";
 
 const router: IRouter = Router();
@@ -34,6 +38,25 @@ function failure(req: Request, res: Response, error: unknown): void {
   res.status(502).json({ error: message });
 }
 
+function savePreview(sessionId: string, action: "sold_out" | "in_stock", result: {
+  orders: PreviewResponse["orders"];
+  variants: PreviewResponse["variants"];
+  blockingIssues: string[];
+}): PreviewResponse {
+  const now = Date.now();
+  for (const [id, stored] of previews) {
+    if (stored.data.expiresAt.getTime() <= now || stored.consumed) previews.delete(id);
+  }
+  while (previews.size >= 100) previews.delete(previews.keys().next().value!);
+  const data = PreviewOrdersResponse.parse({
+    previewId: randomUUID(), action, ...result,
+    summary: stockSummary(result.orders, result.variants),
+    createdAt: new Date(now).toISOString(), expiresAt: new Date(now + TTL).toISOString(),
+  });
+  previews.set(data.previewId, { data, sessionId, consumed: false });
+  return data;
+}
+
 router.get("/shopify/locations", async (req, res): Promise<void> => {
   if (!session(req, res)) return;
   try {
@@ -41,6 +64,44 @@ router.get("/shopify/locations", async (req, res): Promise<void> => {
     res.json(GetLocationsResponse.parse({ locations: locations.map((location) => ({
       id: location.id, name: location.name, active: location.isActive,
     })) }));
+  } catch (error) { failure(req, res, error); }
+});
+
+router.get("/shopify/products", async (req, res): Promise<void> => {
+  if (!session(req, res)) return;
+  const parsed = SearchShopifyProductsQueryParams.safeParse({
+    search: req.query.search,
+    after: req.query.after,
+  });
+  if (!parsed.success || typeof req.query.search !== "string" || !req.query.search.trim()) {
+    res.status(400).json({ error: "Enter at least 2 characters from a product name." });
+    return;
+  }
+  try {
+    const result = await searchShopifyProducts(parsed.data.search.trim(), parsed.data.after ?? null);
+    res.json(SearchShopifyProductsResponse.parse(result));
+  } catch (error) { failure(req, res, error); }
+});
+
+router.get("/shopify/product-variants", async (req, res): Promise<void> => {
+  if (!session(req, res)) return;
+  const productId = req.query.productId;
+  if (typeof productId !== "string" || !getShopifyProductVariantsQueryProductIdRegExp.test(productId)) {
+    res.status(400).json({ error: "Select a valid Shopify product and try again." });
+    return;
+  }
+  const after = req.query.after;
+  if (after !== undefined && (typeof after !== "string" || after.length > 500)) {
+    res.status(400).json({ error: "Reload the product sizes and try again." });
+    return;
+  }
+  try {
+    const result = await readShopifyProductVariants(productId, typeof after === "string" ? after : null);
+    if (!result) {
+      res.status(404).json({ error: "This Shopify product no longer exists. Search again." });
+      return;
+    }
+    res.json(GetShopifyProductVariantsResponse.parse(result));
   } catch (error) { failure(req, res, error); }
 });
 
@@ -60,18 +121,29 @@ router.post("/shopify/preview", async (req, res): Promise<void> => {
   }
   try {
     const result = await buildStockPreview(orders, parsed.data.action);
-    const now = Date.now();
-    for (const [id, stored] of previews) {
-      if (stored.data.expiresAt.getTime() <= now || stored.consumed) previews.delete(id);
-    }
-    while (previews.size >= 100) previews.delete(previews.keys().next().value!);
-    const data = PreviewOrdersResponse.parse({
-      previewId: randomUUID(), action: parsed.data.action, ...result,
-      summary: stockSummary(result.orders, result.variants),
-      createdAt: new Date(now).toISOString(), expiresAt: new Date(now + TTL).toISOString(),
-    });
-    previews.set(data.previewId, { data, sessionId, consumed: false });
-    res.json(data);
+    res.json(savePreview(sessionId, parsed.data.action, result));
+  } catch (error) { failure(req, res, error); }
+});
+
+router.post("/shopify/product-preview", async (req, res): Promise<void> => {
+  const sessionId = session(req, res, true);
+  if (!sessionId) return;
+  const parsed = PreviewShopifyProductStockBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Select between 1 and 25 sizes from one product." });
+    return;
+  }
+  if (new Set(parsed.data.variantIds).size !== parsed.data.variantIds.length) {
+    res.status(400).json({ error: "Duplicate sizes were selected. Reload the product and try again." });
+    return;
+  }
+  try {
+    const result = await buildProductStockPreview(
+      parsed.data.productId, parsed.data.variantIds, parsed.data.action,
+    );
+    res.json(PreviewShopifyProductStockResponse.parse(
+      savePreview(sessionId, parsed.data.action, result),
+    ));
   } catch (error) { failure(req, res, error); }
 });
 

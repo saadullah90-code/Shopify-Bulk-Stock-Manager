@@ -2,6 +2,9 @@ import './index.css';
 
 const root = document.querySelector('#app');
 let previewExpiryTimer;
+let productSearchTimer;
+let productSearchGeneration = 0;
+let productVariantGeneration = 0;
 const state = {
   authenticated: null,
   sessionError: '',
@@ -13,6 +16,20 @@ const state = {
   error: '',
   busy: '',
   confirmed: false,
+  productSearch: '',
+  products: [],
+  productCursor: null,
+  productHasNextPage: false,
+  productBusy: '',
+  productError: '',
+  productId: '',
+  productTitle: '',
+  productStatus: '',
+  productVariants: [],
+  variantCursor: null,
+  variantHasNextPage: false,
+  selectedVariantIds: [],
+  previewSource: '',
 };
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -35,6 +52,7 @@ async function request(path, options = {}) {
       state.authenticated = false;
       state.sessionError = 'Your session expired. Sign in again.';
       clearOperation();
+      clearProductSection();
     }
     const error = new Error(data?.error || `Request failed (${response.status}).`);
     error.status = response.status;
@@ -49,6 +67,26 @@ function clearOperation() {
   state.applyResult = null;
   state.error = '';
   state.confirmed = false;
+  state.previewSource = '';
+}
+
+function clearProductSection() {
+  clearTimeout(productSearchTimer);
+  productSearchGeneration += 1;
+  productVariantGeneration += 1;
+  state.productSearch = '';
+  state.products = [];
+  state.productCursor = null;
+  state.productHasNextPage = false;
+  state.productBusy = '';
+  state.productError = '';
+  state.productId = '';
+  state.productTitle = '';
+  state.productStatus = '';
+  state.productVariants = [];
+  state.variantCursor = null;
+  state.variantHasNextPage = false;
+  state.selectedVariantIds = [];
 }
 
 function ordersCount(text) {
@@ -147,8 +185,13 @@ function notice() {
   return '';
 }
 
-function summaryPanel(summary) {
-  const cells = [
+function summaryPanel(summary, source = 'orders') {
+  const cells = source === 'product' ? [
+    ['variantsFound', 'Sizes reviewed'],
+    ['successfulUpdates', 'Updated'],
+    ['failedUpdates', 'Failed'],
+    ['skippedItems', 'Skipped'],
+  ] : [
     ['inputOrders', 'Orders entered'],
     ['validOrders', 'Orders found'],
     ['variantsFound', 'Variants found'],
@@ -156,7 +199,7 @@ function summaryPanel(summary) {
     ['failedUpdates', 'Failed'],
     ['skippedItems', 'Skipped'],
   ];
-  return `<div class="summary-grid" aria-label="Operation summary">${cells.map(([key, label]) =>
+  return `<div class="summary-grid${source === 'product' ? ' summary-grid-compact' : ''}" aria-label="Operation summary">${cells.map(([key, label]) =>
     `<div class="summary-cell"><span class="summary-value">${esc(summary?.[key] ?? 0)}</span><span class="summary-label">${label}</span></div>`
   ).join('')}</div>`;
 }
@@ -236,14 +279,16 @@ function resultsView() {
     ${applied ? `<div class="notice ${response.summary.failedUpdates > 0 ? 'error' : 'success'}" role="status" data-testid="status-apply-complete"><span class="notice-icon">${response.summary.failedUpdates > 0 ? '!' : '✓'}</span><span>${response.summary.failedUpdates > 0 ? 'Completed with issues' : 'Verification finished'}: ${esc(response.summary.successfulUpdates)} updated, ${esc(response.summary.failedUpdates)} failed, ${esc(response.summary.skippedItems)} skipped. Review every variant and location result below.</span></div>` : ''}
     <div class="results-header">
       <div><h2 class="results-heading">${applied ? 'Apply results' : 'Review before applying'}</h2>
-      <p class="results-sub">${esc(actionName)} · Automatic location discovery · ${esc(response.previewId)}</p></div>
+      <p class="results-sub">${esc(actionName)} · ${state.previewSource === 'product' ? esc(state.productTitle) : 'Automatic location discovery'} · ${esc(response.previewId)}</p></div>
       ${!applied && response.expiresAt ? `<span class="expiry">PREVIEW EXPIRES ${esc(formatDate(response.expiresAt))}</span>` : ''}
     </div>
     ${!applied && blocked ? blockedPanel(issues) : ''}
-    ${summaryPanel(response.summary)}
+    ${summaryPanel(response.summary, state.previewSource === 'product' ? 'product' : 'orders')}
     <section class="panel result-panel">
-      <div class="result-panel-head"><h3>Order resolution</h3><span class="result-count">${(response.orders || state.preview?.orders || []).length} checked</span></div>
-      ${orderRows(response.orders || state.preview?.orders || [])}
+      <div class="result-panel-head"><h3>${state.previewSource === 'product' ? 'Selected sizes' : 'Order resolution'}</h3><span class="result-count">${state.previewSource === 'product' ? (response.variants || []).length + ' selected' : (response.orders || state.preview?.orders || []).length + ' checked'}</span></div>
+      ${state.previewSource === 'product'
+        ? `<div class="order-list">${(response.variants || []).map((variant) => `<div class="product-review-row"><strong>${esc(variant.variantTitle)}</strong><span>${esc(variant.productTitle)}</span></div>`).join('')}</div>`
+        : orderRows(response.orders || state.preview?.orders || [])}
     </section>
     <section class="panel result-panel" style="margin-top:14px">
       <div class="result-panel-head"><h3>Variants ${applied ? 'processed' : 'in scope'}</h3><span class="result-count">${variants.length} ${variants.length === 1 ? 'item' : 'items'}</span></div>
@@ -262,6 +307,56 @@ function resultsView() {
     </div>` : `<div class="apply-bar"><p class="apply-explainer">${esc(response.summary.successfulUpdates ?? 0)} updated · ${esc(response.summary.failedUpdates ?? 0)} failed · ${esc(response.summary.skippedItems ?? 0)} skipped. These are the results returned by Shopify.</p>
       <button class="btn btn-secondary" type="button" data-action="new-operation" data-testid="button-new-operation">Start another operation</button>
     </div>`}
+  </section>`;
+}
+
+function productSection() {
+  const searching = state.productBusy === 'search';
+  return `<section class="panel product-panel" aria-labelledby="product-panel-title">
+    <div class="panel-topline">
+      <div><p class="eyebrow">Second way to manage stock</p><h2 class="panel-title" id="product-panel-title">Find a product by name</h2></div>
+      <span class="index-label">LIVE SHOPIFY DATA</span>
+    </div>
+    <label class="field-label" for="product-search">Product name <span class="field-hint">TYPE AT LEAST 2 CHARACTERS</span></label>
+    <div class="product-search-row">
+      <input class="field-control" id="product-search" type="search" maxlength="80" autocomplete="off" value="${esc(state.productSearch)}" placeholder="For example, Ralph Lauren slides" ${state.busy ? 'disabled' : ''} aria-label="Search Shopify products by name">
+      <button class="btn btn-secondary" type="button" data-action="search-products" ${searching || state.busy || state.productSearch.trim().length < 2 ? 'disabled' : ''}>${searching ? 'Searching…' : 'Search'}</button>
+    </div>
+    <p class="product-search-hint">${state.productError ? `<span role="alert" class="product-error">${esc(state.productError)}</span>` : state.productSearch.trim().length < 2 ? 'Enter at least 2 characters. Search reads product names; it does not change inventory.' : `${state.products.length} matching product${state.products.length === 1 ? '' : 's'} shown.`}</p>
+    ${state.products.length ? `<div class="product-results" aria-label="Matching Shopify products">
+      ${state.products.map((product) => `<button class="product-result" type="button" data-action="open-product" data-product-id="${esc(product.id)}" ${state.productBusy || state.busy ? 'disabled' : ''}>
+        <span><strong>${esc(product.title)}</strong><small>${esc(product.status)}</small></span><span class="arrow" aria-hidden="true">→</span>
+      </button>`).join('')}
+    </div>` : searching ? '<p class="product-empty">Searching Shopify…</p>' : state.productSearch.trim().length >= 2 && !state.productError ? '<p class="product-empty">No products found. Try another part of the product name.</p>' : ''}
+    ${state.productHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
+    ${state.productId ? `<section class="product-detail" aria-label="Selected product variants">
+      <div class="product-detail-heading"><div><p class="eyebrow">Sizes and current availability</p><h3>${esc(state.productTitle)}</h3><p>${esc(state.productStatus)}</p></div>
+        <button class="product-refresh" type="button" data-action="refresh-product" ${state.productBusy || state.busy ? 'disabled' : ''}>Refresh</button>
+      </div>
+      ${state.productBusy === 'variants' ? '<p class="product-empty">Loading live Shopify sizes…</p>' : ''}
+      ${state.productVariants.length ? `<div class="product-size-list">${state.productVariants.map((variant) => {
+        const available = variant.availableForSale;
+        const disabled = !variant.inventoryItemId || Boolean(state.busy);
+        return `<label class="product-size-row${disabled ? ' is-disabled' : ''}">
+          <input type="checkbox" data-product-variant="${esc(variant.id)}" ${state.selectedVariantIds.includes(variant.id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} aria-label="Select size ${esc(variant.title)}">
+          <span class="product-size-copy"><strong>${esc(variant.title)}</strong><small>${variant.sku ? `SKU ${esc(variant.sku)}` : variant.inventoryItemId ? 'No SKU' : 'No inventory item'}</small></span>
+          <span class="product-quantity">${variant.inventoryQuantity === null ? 'Qty unknown' : `Qty ${esc(variant.inventoryQuantity)}`}</span>
+          <span class="product-availability ${available ? 'is-available' : 'is-unavailable'}">${available ? 'Available' : 'Unavailable'}</span>
+        </label>`;
+      }).join('')}</div>` : ''}
+      ${state.variantHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-variants" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-variants' ? 'Loading…' : 'Load more sizes'}</button></div>` : ''}
+      ${state.productVariants.some((variant) => !variant.inventoryItemId) ? '<p class="product-search-hint">Sizes without an inventory item cannot be changed.</p>' : ''}
+      ${state.productVariants.length ? `<div class="product-stock-actions">
+        <span class="selection-count" id="selected-size-count">${state.selectedVariantIds.length} size${state.selectedVariantIds.length === 1 ? '' : 's'} selected (up to 25 at once)</span>
+        <div class="product-action-buttons">
+          <button class="btn btn-secondary" type="button" data-action="product-preview" data-stock-action="in_stock" ${!state.selectedVariantIds.length || state.selectedVariantIds.length > 25 || state.busy || state.productBusy ? 'disabled' : ''}>Review In Stock</button>
+          <button class="btn btn-danger" type="button" data-action="product-preview" data-stock-action="sold_out" ${!state.selectedVariantIds.length || state.selectedVariantIds.length > 25 || state.busy || state.productBusy ? 'disabled' : ''}>Review Sold Out</button>
+        </div>
+      </div>
+      <p class="product-safety-note">In Stock turns tracking off; it does not set or restore quantities. Sold Out previews every active stocked location and sets its available quantity to 0. Nothing changes until you confirm the review.</p>` : ''}
+      ${state.applyResult && state.previewSource === 'product' ? '<p class="product-search-hint">Update results are shown above. Refresh sizes to read availability again.</p>' : ''}
+    </section>` : ''}
+    ${state.previewSource === 'product' ? resultsView() : ''}
   </section>`;
 }
 
@@ -301,15 +396,20 @@ function appView() {
             ${state.busy === 'preview' ? 'Reading orders…' : 'Preview inventory changes'} <span class="arrow" aria-hidden="true">→</span>
           </button>
         </div>
-        ${resultsView()}
+        ${state.previewSource === 'product' ? '' : resultsView()}
       </section>
       ${sidebar()}
     </div>
+    ${productSection()}
     <div class="footer-line"><span>SHOPIFY BULK STOCK MANAGER</span><span>NO CHANGE WITHOUT EXPLICIT CONFIRMATION</span></div>
   </main>`;
 }
 
 function render() {
+  const searchHasFocus = document.activeElement?.id === 'product-search';
+  const searchSelection = searchHasFocus
+    ? [document.activeElement.selectionStart, document.activeElement.selectionEnd]
+    : null;
   if (state.authenticated === null) {
     root.innerHTML = state.sessionError ? `<div class="loading-page"><div class="loading-card">
       <p class="eyebrow">Session check unavailable</p><p class="aside-copy">${esc(state.sessionError)}</p>
@@ -318,6 +418,15 @@ function render() {
     return;
   }
   root.innerHTML = state.authenticated ? appView() : loginView();
+  if (searchHasFocus) {
+    const search = root.querySelector('#product-search');
+    if (search) {
+      search.focus({ preventScroll: true });
+      if (searchSelection?.[0] != null && searchSelection?.[1] != null) {
+        search.setSelectionRange(searchSelection[0], searchSelection[1]);
+      }
+    }
+  }
 }
 
 async function checkSession() {
@@ -369,6 +478,99 @@ async function preview() {
     }
   } catch (error) {
     state.error = error.message || 'Could not create a preview. No changes were made.';
+  } finally {
+    state.busy = '';
+    render();
+  }
+}
+
+async function searchProducts(after = null, generation = ++productSearchGeneration) {
+  const search = state.productSearch.trim();
+  if (search.length < 2 || state.busy) return;
+  state.productBusy = after ? 'more-products' : 'search';
+  state.productError = '';
+  if (!after) {
+    state.products = [];
+    state.productCursor = null;
+    state.productHasNextPage = false;
+  }
+  render();
+  try {
+    const params = new URLSearchParams({ search });
+    if (after) params.set('after', after);
+    const result = await request(`/api/shopify/products?${params}`);
+    if (generation !== productSearchGeneration) return;
+    state.products = after ? [...state.products, ...result.products] : result.products;
+    state.productCursor = result.endCursor;
+    state.productHasNextPage = result.hasNextPage;
+  } catch (error) {
+    if (generation === productSearchGeneration) state.productError = error.message || 'Shopify product search failed.';
+  } finally {
+    if (generation === productSearchGeneration) {
+      state.productBusy = '';
+      render();
+    }
+  }
+}
+
+async function loadProductVariants(productId = state.productId, after = null) {
+  if (!productId || state.busy) return;
+  const generation = ++productVariantGeneration;
+  state.productBusy = after ? 'more-variants' : 'variants';
+  state.productError = '';
+  render();
+  try {
+    const params = new URLSearchParams({ productId });
+    if (after) params.set('after', after);
+    const url = `/api/shopify/product-variants?${params}`;
+    const result = await request(url);
+    if (state.productId !== productId || generation !== productVariantGeneration) return;
+    state.productTitle = result.title;
+    state.productStatus = result.status;
+    state.productVariants = after ? [...state.productVariants, ...result.variants] : result.variants;
+    state.variantCursor = result.endCursor;
+    state.variantHasNextPage = result.hasNextPage;
+  } catch (error) {
+    if (generation === productVariantGeneration) state.productError = error.message || 'Could not load the product sizes from Shopify.';
+  } finally {
+    if (generation === productVariantGeneration) {
+      state.productBusy = '';
+      render();
+    }
+  }
+}
+
+async function previewProduct(action) {
+  if (!state.productId || !state.selectedVariantIds.length || state.selectedVariantIds.length > 25 || state.busy) return;
+  clearOperation();
+  state.action = action;
+  state.busy = 'preview';
+  state.error = '';
+  render();
+  try {
+    const result = await request('/api/shopify/product-preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        productId: state.productId,
+        variantIds: [...state.selectedVariantIds],
+        action,
+      }),
+    });
+    if (!result || typeof result.previewId !== 'string' || !Array.isArray(result.variants)) {
+      throw new Error('Shopify did not return a complete size preview. No changes were made.');
+    }
+    state.preview = result;
+    state.previewSource = 'product';
+    const previewId = result.previewId;
+    previewExpiryTimer = setTimeout(() => {
+      if (state.preview?.previewId === previewId && !state.applyResult && state.busy !== 'apply') {
+        clearOperation();
+        state.error = 'The preview expired. Create a fresh preview before applying.';
+        render();
+      }
+    }, Math.max(0, Date.parse(result.expiresAt) - Date.now()));
+  } catch (error) {
+    state.error = error.message || 'Could not preview these sizes. No changes were made.';
   } finally {
     state.busy = '';
     render();
@@ -442,13 +644,36 @@ root.addEventListener('submit', async (event) => {
 root.addEventListener('input', (event) => {
   if (event.target.id === 'orders') {
     state.orderText = event.target.value;
+    const oldProductPreview = state.previewSource === 'product';
     clearOperation();
+    if (oldProductPreview) root.querySelector('.product-panel .results')?.remove();
     const count = root.querySelector('#order-count');
     if (count) count.textContent = countOrdersText();
     const results = root.querySelector('.results, .empty-preview');
     if (results) results.outerHTML = resultsView();
     const previewButton = root.querySelector('[data-action="preview"]');
     if (previewButton) previewButton.disabled = !state.orderText.trim() || state.busy !== '';
+  }
+  if (event.target.id === 'product-search') {
+    state.productSearch = event.target.value;
+    clearOperation();
+    clearTimeout(productSearchTimer);
+    const generation = ++productSearchGeneration;
+    state.productError = '';
+    if (state.productSearch.trim().length < 2) {
+      state.products = [];
+      state.productCursor = null;
+      state.productHasNextPage = false;
+      state.productBusy = '';
+      render();
+      return;
+    }
+    state.products = [];
+    state.productCursor = null;
+    state.productHasNextPage = false;
+    state.productBusy = 'search';
+    render();
+    productSearchTimer = setTimeout(() => searchProducts(null, generation), 350);
   }
 });
 
@@ -462,6 +687,24 @@ root.addEventListener('change', (event) => {
     state.confirmed = target.checked;
     const applyButton = root.querySelector('[data-action="apply"]');
     if (applyButton) applyButton.disabled = (state.preview?.blockingIssues || []).length > 0 || !state.confirmed || !state.preview || state.busy !== '' || !(state.preview.variants || []).some((item) => item.eligible && item.updateStatus !== 'skipped');
+  } else if (target.matches('[data-product-variant]')) {
+    state.selectedVariantIds = [...root.querySelectorAll('[data-product-variant]:checked')]
+      .map((input) => input.dataset.productVariant);
+    clearOperation();
+    const count = root.querySelector('#selected-size-count');
+    if (count) count.textContent = `${state.selectedVariantIds.length} size${state.selectedVariantIds.length === 1 ? '' : 's'} selected (up to 25 at once)`;
+    for (const button of root.querySelectorAll('[data-action="product-preview"]')) {
+      button.disabled = !state.selectedVariantIds.length || state.selectedVariantIds.length > 25 || Boolean(state.busy) || Boolean(state.productBusy);
+    }
+    render();
+  }
+});
+
+root.addEventListener('keydown', (event) => {
+  if (event.target.id === 'product-search' && event.key === 'Enter') {
+    event.preventDefault();
+    clearTimeout(productSearchTimer);
+    searchProducts();
   }
 });
 
@@ -471,6 +714,35 @@ root.addEventListener('click', async (event) => {
   const action = button.dataset.action;
   if (action === 'preview') await preview();
   if (action === 'apply') await applyChanges();
+  if (action === 'search-products') {
+    clearTimeout(productSearchTimer);
+    await searchProducts();
+  }
+  if (action === 'load-more-products' && state.productCursor) {
+    await searchProducts(state.productCursor);
+  }
+  if (action === 'open-product' && button.dataset.productId) {
+    clearTimeout(productSearchTimer);
+    productSearchGeneration += 1;
+    clearOperation();
+    state.productId = button.dataset.productId;
+    state.productTitle = button.querySelector('strong')?.textContent || 'Product';
+    state.productStatus = '';
+    state.productVariants = [];
+    state.variantCursor = null;
+    state.variantHasNextPage = false;
+    state.selectedVariantIds = [];
+    await loadProductVariants();
+  }
+  if (action === 'load-more-variants' && state.variantCursor) {
+    await loadProductVariants(state.productId, state.variantCursor);
+  }
+  if (action === 'refresh-product') {
+    state.selectedVariantIds = [];
+    clearOperation();
+    await loadProductVariants(state.productId);
+  }
+  if (action === 'product-preview') await previewProduct(button.dataset.stockAction);
   if (action === 'logout') {
     button.disabled = true;
     try { await request('/api/auth/logout', { method: 'POST' }); }
@@ -483,11 +755,14 @@ root.addEventListener('click', async (event) => {
     state.orderText = '';
     state.loginError = '';
     clearOperation();
+    clearProductSection();
     render();
   }
   if (action === 'retry-session') await checkSession();
   if (action === 'new-operation') {
-    state.orderText = '';
+    const productOperation = state.previewSource === 'product';
+    if (productOperation) state.selectedVariantIds = [];
+    else state.orderText = '';
     state.action = 'sold_out';
     clearOperation();
     render();

@@ -62,6 +62,63 @@ export const GetLocationsResponse = zod.object({
 
 
 /**
+ * @summary Search Shopify products by title
+ */
+export const searchShopifyProductsQuerySearchMin = 2;
+export const searchShopifyProductsQuerySearchMax = 80;
+
+export const searchShopifyProductsQueryAfterMax = 500;
+
+
+
+export const SearchShopifyProductsQueryParams = zod.object({
+  "search": zod.coerce.string().min(searchShopifyProductsQuerySearchMin).max(searchShopifyProductsQuerySearchMax),
+  "after": zod.coerce.string().max(searchShopifyProductsQueryAfterMax).optional()
+})
+
+export const SearchShopifyProductsResponse = zod.object({
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "status": zod.string()
+})),
+  "hasNextPage": zod.boolean(),
+  "endCursor": zod.string().nullable()
+})
+
+
+/**
+ * @summary Read all sizes and live availability for a product
+ */
+export const getShopifyProductVariantsQueryProductIdRegExp = new RegExp('^gid://shopify/Product/[0-9]+$');
+export const getShopifyProductVariantsQueryAfterMax = 500;
+
+
+
+export const GetShopifyProductVariantsQueryParams = zod.object({
+  "productId": zod.coerce.string().regex(getShopifyProductVariantsQueryProductIdRegExp),
+  "after": zod.coerce.string().max(getShopifyProductVariantsQueryAfterMax).optional()
+})
+
+export const GetShopifyProductVariantsResponse = zod.object({
+  "productId": zod.string(),
+  "title": zod.string(),
+  "status": zod.string(),
+  "variants": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "sku": zod.string().nullable(),
+  "availableForSale": zod.boolean(),
+  "inventoryQuantity": zod.number().int().nullable(),
+  "inventoryItemId": zod.string().nullable(),
+  "tracked": zod.boolean().nullable()
+})),
+  "hasNextPage": zod.boolean(),
+  "endCursor": zod.string().nullable()
+})
+
+
+/**
  * @summary Read orders and inventory without changing stock
  */
 export const previewOrdersBodyOrdersMax = 20000;
@@ -170,6 +227,71 @@ export const ApplyChangesResponse = zod.object({
   "failedUpdates": zod.number().int(),
   "skippedItems": zod.number().int()
 })
+})
+
+
+/**
+ * @summary Preview a confirmed set of product variants before updating them
+ */
+export const previewShopifyProductStockBodyProductIdRegExp = new RegExp('^gid://shopify/Product/[0-9]+$');
+export const previewShopifyProductStockBodyVariantIdsItemRegExp = new RegExp('^gid://shopify/ProductVariant/[0-9]+$');
+export const previewShopifyProductStockBodyVariantIdsMax = 25;
+
+
+
+export const PreviewShopifyProductStockBody = zod.object({
+  "productId": zod.string().regex(previewShopifyProductStockBodyProductIdRegExp),
+  "variantIds": zod.array(zod.string().regex(previewShopifyProductStockBodyVariantIdsItemRegExp)).min(1).max(previewShopifyProductStockBodyVariantIdsMax),
+  "action": zod.enum(['sold_out', 'in_stock'])
+})
+
+export const PreviewShopifyProductStockResponse = zod.object({
+  "blockingIssues": zod.array(zod.string()),
+  "previewId": zod.string(),
+  "action": zod.enum(['sold_out', 'in_stock']),
+  "orders": zod.array(zod.object({
+  "entered": zod.string(),
+  "status": zod.enum(['found', 'not_found', 'ambiguous', 'inaccessible']),
+  "orderName": zod.string().nullable(),
+  "reason": zod.string().nullable(),
+  "purchaserName": zod.string().nullish(),
+  "purchaserNameReason": zod.string().nullish()
+})),
+  "variants": zod.array(zod.object({
+  "inventoryItemId": zod.string(),
+  "productTitle": zod.string(),
+  "variantTitle": zod.string(),
+  "orderNumbers": zod.array(zod.string()),
+  "productStatus": zod.string().nullable(),
+  "tracked": zod.boolean(),
+  "inventoryPolicy": zod.union([zod.literal('DENY'),zod.literal('CONTINUE'),zod.literal(null)]).nullable(),
+  "targetTracked": zod.boolean(),
+  "locations": zod.array(zod.object({
+  "locationId": zod.string(),
+  "name": zod.string(),
+  "active": zod.boolean().nullable().describe('Null when active status is not required or requested for a tracking-only action.'),
+  "stocked": zod.boolean(),
+  "currentQuantity": zod.number().int().nullable(),
+  "targetQuantity": zod.number().int().nullable(),
+  "updateStatus": zod.enum(['pending', 'success', 'failed', 'skipped']),
+  "updateMessage": zod.string().nullable()
+})),
+  "eligible": zod.boolean(),
+  "skipReason": zod.string().nullable(),
+  "warning": zod.string().nullable(),
+  "updateStatus": zod.enum(['pending', 'success', 'failed', 'skipped']),
+  "updateMessage": zod.string().nullable()
+})),
+  "summary": zod.object({
+  "inputOrders": zod.number().int(),
+  "validOrders": zod.number().int(),
+  "variantsFound": zod.number().int(),
+  "successfulUpdates": zod.number().int(),
+  "failedUpdates": zod.number().int(),
+  "skippedItems": zod.number().int()
+}),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
 })
 
 
