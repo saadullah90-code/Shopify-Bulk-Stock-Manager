@@ -9,6 +9,7 @@ const state = {
   authenticated: null,
   sessionError: '',
   loginError: '',
+  activeSection: 'orders',
   orderText: '',
   action: 'sold_out',
   preview: null,
@@ -21,6 +22,7 @@ const state = {
   productCursor: null,
   productHasNextPage: false,
   collections: [],
+  collectionsLoaded: false,
   collectionCursor: null,
   collectionHasNextPage: false,
   collectionError: '',
@@ -46,6 +48,7 @@ const state = {
   deleteError: '',
   deleteResults: [],
   deleteSummary: null,
+  scrollPositions: {},
 };
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -91,10 +94,12 @@ function clearProductSection() {
   productSearchGeneration += 1;
   productVariantGeneration += 1;
   state.productSearch = '';
+  state.activeSection = 'orders';
   state.products = [];
   state.productCursor = null;
   state.productHasNextPage = false;
   state.collections = [];
+  state.collectionsLoaded = false;
   state.collectionCursor = null;
   state.collectionHasNextPage = false;
   state.collectionError = '';
@@ -119,6 +124,7 @@ function clearProductSection() {
   state.deleteError = '';
   state.deleteResults = [];
   state.deleteSummary = null;
+  state.scrollPositions = {};
 }
 
 function clearSelectedProduct() {
@@ -375,7 +381,7 @@ function productSection() {
   const productResults = state.selectedCollectionId ? [] : state.products;
   return `<section class="panel product-panel" aria-labelledby="product-panel-title">
     <div class="panel-topline">
-      <div><p class="eyebrow">Second way to manage stock</p><h2 class="panel-title" id="product-panel-title">Products and collections</h2></div>
+      <div><p class="eyebrow">Catalog inventory</p><h2 class="panel-title" id="product-panel-title">Collections and products</h2></div>
       <span class="index-label">LIVE SHOPIFY DATA</span>
     </div>
     <label class="field-label" for="product-search">Product name <span class="field-hint">TYPE AT LEAST 2 CHARACTERS</span></label>
@@ -384,7 +390,7 @@ function productSection() {
       <button class="btn btn-secondary" type="button" data-action="search-products" ${searching || state.busy || state.productSearch.trim().length < 2 ? 'disabled' : ''}>${searching ? 'Searching…' : 'Search'}</button>
     </div>
     <p class="product-search-hint">${state.productError && !state.selectedCollectionId ? `<span role="alert" class="product-error">${esc(state.productError)}</span>` : state.productSearch.trim().length < 2 ? 'Search products by name, or browse every Shopify collection below.' : `${productResults.length} matching product${productResults.length === 1 ? '' : 's'} shown.`}</p>
-    ${productResults.length ? `<div class="product-results" aria-label="Matching Shopify products">
+    ${productResults.length ? `<div class="product-results" data-preserve-scroll="product-search-results" aria-label="Matching Shopify products">
       ${productResults.map(productCard).join('')}
     </div>` : searching ? '<p class="product-empty">Searching Shopify…</p>' : state.productSearch.trim().length >= 2 && !state.productError ? '<p class="product-empty">No products found. Try another part of the product name.</p>' : ''}
     ${state.productHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
@@ -430,46 +436,66 @@ function appView() {
     <div class="topbar-meta"><span class="live-dot"></span> Authenticated session <button class="topbar-action" type="button" data-action="logout" ${state.busy ? 'disabled' : ''} data-testid="button-logout">Sign out</button></div>
   </header>
   <main class="main">
-    <div class="page-heading"><div><p class="eyebrow">Inventory operations / 01</p><h1>Order-based stock change</h1></div>
-      <p class="heading-note">Start with the orders. Verify the exact variants. Apply only after the preview is right.</p>
-    </div>
-    ${steps()}
-    ${notice()}
-    <div class="workspace">
-      <section class="panel input-panel">
-        <div class="panel-topline"><h2 class="panel-title">Build a stock preview</h2><span class="index-label">READ-ONLY FIRST</span></div>
-        <label class="field-label" for="orders">Order numbers <span class="field-hint">LINES, COMMAS, OR SPACES</span></label>
-        <textarea class="orders-input" id="orders" name="orders" maxlength="20000" ${state.busy ? 'disabled' : ''} placeholder="#1001&#10;#1002&#10;1003" data-testid="input-orders">${esc(state.orderText)}</textarea>
-        <div class="input-foot"><span>Paste order names or numbers</span><span id="order-count">${countOrdersText()}</span></div>
-        <div class="settings-grid" style="grid-template-columns:1fr">
-          <div class="setting">
-            <span class="field-label">Inventory action</span>
-            <div class="segmented" role="radiogroup" aria-label="Inventory action">
-              <label class="segment-option"><input type="radio" name="action" value="sold_out" ${state.action === 'sold_out' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-sold-out"><span>Sold Out</span></label>
-              <label class="segment-option"><input type="radio" name="action" value="in_stock" ${state.action === 'in_stock' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-in-stock"><span>In Stock</span></label>
+    <nav class="section-nav" aria-label="Workspace sections">
+      <button class="section-nav-button${state.activeSection === 'orders' ? ' is-active' : ''}" type="button" data-action="switch-section" data-section="orders" ${state.activeSection === 'orders' ? 'aria-current="page"' : ''}>
+        <span class="section-nav-number">01</span><span class="section-nav-copy"><strong>Orders</strong><small>Stock changes by order number</small></span>
+      </button>
+      <button class="section-nav-button${state.activeSection === 'collections' ? ' is-active' : ''}" type="button" data-action="switch-section" data-section="collections" ${state.activeSection === 'collections' ? 'aria-current="page"' : ''}>
+        <span class="section-nav-number">02</span><span class="section-nav-copy"><strong>Collections</strong><small>Browse products, stock, and deletion</small></span>
+      </button>
+    </nav>
+    ${state.activeSection === 'orders' ? `<section class="section-view" aria-label="Orders and stock">
+      <div class="page-heading"><div><p class="eyebrow">Inventory operations / 01</p><h1>Order-based stock change</h1></div>
+        <p class="heading-note">Start with the orders. Verify the exact variants. Apply only after the preview is right.</p>
+      </div>
+      ${steps()}
+      ${notice()}
+      <div class="workspace">
+        <section class="panel input-panel">
+          <div class="panel-topline"><h2 class="panel-title">Build a stock preview</h2><span class="index-label">READ-ONLY FIRST</span></div>
+          <label class="field-label" for="orders">Order numbers <span class="field-hint">LINES, COMMAS, OR SPACES</span></label>
+          <textarea class="orders-input" id="orders" name="orders" maxlength="20000" ${state.busy ? 'disabled' : ''} placeholder="#1001&#10;#1002&#10;1003" data-testid="input-orders">${esc(state.orderText)}</textarea>
+          <div class="input-foot"><span>Paste order names or numbers</span><span id="order-count">${countOrdersText()}</span></div>
+          <div class="settings-grid" style="grid-template-columns:1fr">
+            <div class="setting">
+              <span class="field-label">Inventory action</span>
+              <div class="segmented" role="radiogroup" aria-label="Inventory action">
+                <label class="segment-option"><input type="radio" name="action" value="sold_out" ${state.action === 'sold_out' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-sold-out"><span>Sold Out</span></label>
+                <label class="segment-option"><input type="radio" name="action" value="in_stock" ${state.action === 'in_stock' ? 'checked' : ''} ${state.busy ? 'disabled' : ''} data-testid="radio-in-stock"><span>In Stock</span></label>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="notice" role="note" style="margin-top:18px">${state.action === 'sold_out'
-          ? 'Sold Out enables tracking and sets available inventory to exactly 0 at every active stocked location. Inactive locations are shown and skipped. Shopify’s CONTINUE selling policy can still permit sales at zero.'
-          : 'In Stock disables inventory tracking. It does not set, invent, or restore quantities, publish products, or change sales channels. Availability depends on Shopify settings.'}</div>
-        <div class="button-row">
-          <p class="quiet-note">A preview reads live order and inventory data. It does not change stock.</p>
-          <button class="btn btn-primary" type="button" data-action="preview" ${!canPreview ? 'disabled' : ''} data-testid="button-preview">
-            ${state.busy === 'preview' ? 'Reading orders…' : 'Preview inventory changes'} <span class="arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-        ${state.previewSource === 'product' ? '' : resultsView()}
-      </section>
-      ${sidebar()}
-    </div>
-    ${productSection()}
+          <div class="notice" role="note" style="margin-top:18px">${state.action === 'sold_out'
+            ? 'Sold Out enables tracking and sets available inventory to exactly 0 at every active stocked location. Inactive locations are shown and skipped. Shopify’s CONTINUE selling policy can still permit sales at zero.'
+            : 'In Stock disables inventory tracking. It does not set, invent, or restore quantities, publish products, or change sales channels. Availability depends on Shopify settings.'}</div>
+          <div class="button-row">
+            <p class="quiet-note">A preview reads live order and inventory data. It does not change stock.</p>
+            <button class="btn btn-primary" type="button" data-action="preview" ${!canPreview ? 'disabled' : ''} data-testid="button-preview">
+              ${state.busy === 'preview' ? 'Reading orders…' : 'Preview inventory changes'} <span class="arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+          ${state.previewSource === 'product' ? '' : resultsView()}
+        </section>
+        ${sidebar()}
+      </div>
+    </section>` : `<section class="section-view" aria-label="Collections and products">
+      <div class="page-heading"><div><p class="eyebrow">Catalog operations / 02</p><h1>Collections and products</h1></div>
+        <p class="heading-note">Open a collection, choose a product, then review its stock before making a change.</p>
+      </div>
+      ${productSection()}
+    </section>`}
     <div class="footer-line"><span>SHOPIFY BULK STOCK MANAGER</span><span>NO CHANGE WITHOUT EXPLICIT CONFIRMATION</span></div>
   </main>`;
 }
 
 function render() {
   const searchHasFocus = document.activeElement?.id === 'product-search';
+  const focusedAction = document.activeElement?.dataset?.action || '';
+  const focusedSection = document.activeElement?.dataset?.section || '';
+  for (const element of root.querySelectorAll('[data-preserve-scroll]')) {
+    const key = element.dataset.preserveScroll;
+    if (key) state.scrollPositions[key] = { top: element.scrollTop, left: element.scrollLeft };
+  }
   const searchSelection = searchHasFocus
     ? [document.activeElement.selectionStart, document.activeElement.selectionEnd]
     : null;
@@ -481,6 +507,13 @@ function render() {
     return;
   }
   root.innerHTML = state.authenticated ? appView() : loginView();
+  for (const element of root.querySelectorAll('[data-preserve-scroll]')) {
+    const position = state.scrollPositions[element.dataset.preserveScroll];
+    if (position) {
+      element.scrollTop = position.top;
+      element.scrollLeft = position.left;
+    }
+  }
   if (searchHasFocus) {
     const search = root.querySelector('#product-search');
     if (search) {
@@ -489,6 +522,11 @@ function render() {
         search.setSelectionRange(searchSelection[0], searchSelection[1]);
       }
     }
+  }
+  if (focusedAction === 'switch-section') {
+    [...root.querySelectorAll('[data-action="switch-section"]')]
+      .find((button) => button.dataset.section === focusedSection)
+      ?.focus({ preventScroll: true });
   }
 }
 
@@ -507,7 +545,6 @@ async function checkSession() {
     }
   }
   render();
-  if (state.authenticated) await loadCollections();
 }
 
 function getPayload() {
@@ -585,6 +622,7 @@ async function loadCollections(after = null) {
     state.collections = [];
     state.collectionCursor = null;
     state.collectionHasNextPage = false;
+    state.collectionsLoaded = false;
   }
   render();
   try {
@@ -594,6 +632,7 @@ async function loadCollections(after = null) {
     state.collections = after ? [...state.collections, ...result.collections] : result.collections;
     state.collectionCursor = result.endCursor;
     state.collectionHasNextPage = result.hasNextPage;
+    state.collectionsLoaded = true;
   } catch (error) {
     state.collectionError = error.message || 'Could not load Shopify collections.';
   } finally {
@@ -604,6 +643,9 @@ async function loadCollections(after = null) {
 
 async function loadCollectionProducts(collectionId = state.selectedCollectionId, after = null) {
   if (!collectionId || state.busy || state.productBusy) return;
+  const existingList = after ? root.querySelector('[data-preserve-scroll="collection-products"]') : null;
+  const previousScrollHeight = existingList?.scrollHeight ?? null;
+  let appendedNextPage = false;
   state.productBusy = after ? 'more-collection-products' : 'collection-products';
   state.productError = '';
   if (!after) {
@@ -618,14 +660,33 @@ async function loadCollectionProducts(collectionId = state.selectedCollectionId,
     const result = await request(`/api/shopify/collection-products?${params}`);
     if (state.selectedCollectionId !== collectionId) return;
     state.selectedCollectionTitle = result.collectionTitle;
-    state.collectionProducts = after ? [...state.collectionProducts, ...result.products] : result.products;
-    state.collectionProductCursor = result.endCursor;
-    state.collectionProductsHasNextPage = result.hasNextPage;
+    if (after) {
+      const existingIds = new Set(state.collectionProducts.map((product) => product.id));
+      const nextProducts = result.products.filter((product) => !existingIds.has(product.id));
+      if (!nextProducts.length) {
+        state.collectionProductCursor = null;
+        state.collectionProductsHasNextPage = false;
+        state.productError = 'Shopify returned the products already shown instead of the next page. Reopen the collection and try again.';
+      } else {
+        state.collectionProducts = [...state.collectionProducts, ...nextProducts];
+        state.collectionProductCursor = result.endCursor;
+        state.collectionProductsHasNextPage = result.hasNextPage;
+        appendedNextPage = true;
+      }
+    } else {
+      state.collectionProducts = result.products;
+      state.collectionProductCursor = result.endCursor;
+      state.collectionProductsHasNextPage = result.hasNextPage;
+    }
   } catch (error) {
     state.productError = error.message || 'Could not load products in this collection.';
   } finally {
     state.productBusy = '';
     render();
+    if (appendedNextPage && previousScrollHeight !== null) {
+      const list = root.querySelector('[data-preserve-scroll="collection-products"]');
+      if (list) list.scrollTop = Math.min(previousScrollHeight, list.scrollHeight - list.clientHeight);
+    }
   }
 }
 
@@ -662,14 +723,15 @@ function collectionBrowser() {
       <button class="product-refresh" type="button" data-action="refresh-collections" ${state.productBusy || state.busy ? 'disabled' : ''}>Refresh collections</button>
     </div>
     <p class="product-search-hint">${state.collectionError ? `<span role="alert" class="product-error">${esc(state.collectionError)}</span>` : state.productBusy === 'collections' ? 'Loading Shopify collections…' : `${state.collections.length} collection${state.collections.length === 1 ? '' : 's'} loaded. Open one to browse its products.`}</p>
-    ${state.collections.length ? `<div class="collection-list">
+    ${state.collections.length ? `<div class="collection-list" data-preserve-scroll="collection-list">
       ${state.collections.map((collection) => `<button class="collection-result${state.selectedCollectionId === collection.id ? ' is-selected' : ''}" type="button" data-action="open-collection" data-collection-id="${esc(collection.id)}" data-collection-title="${esc(collection.title)}" ${state.productBusy || state.busy ? 'disabled' : ''} aria-pressed="${state.selectedCollectionId === collection.id}">${esc(collection.title)}<span aria-hidden="true">→</span></button>`).join('')}
     </div>` : state.productBusy === 'collections' ? '' : '<p class="product-empty">No Shopify collections were found.</p>'}
     ${state.collectionHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-collections" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-collections' ? 'Loading…' : 'Load more collections'}</button></div>` : ''}
     ${state.selectedCollectionId ? `<div class="collection-products">
       <div class="collection-products-heading"><h4>${esc(state.selectedCollectionTitle || 'Collection products')}</h4><span>${state.collectionProducts.length} shown</span></div>
       ${state.productBusy === 'collection-products' ? '<p class="product-empty">Loading collection products…</p>' : ''}
-      ${state.collectionProducts.length ? `<div class="product-results" aria-label="Products in this collection">${state.collectionProducts.map((product) => productCard(product, { selectable: true })).join('')}</div>` : state.productBusy === 'collection-products' ? '' : state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : '<p class="product-empty">No products are in this collection.</p>'}
+      ${state.collectionProducts.length ? `<div class="product-results" data-preserve-scroll="collection-products" aria-label="Products in this collection">${state.collectionProducts.map((product) => productCard(product, { selectable: true })).join('')}</div>` : state.productBusy === 'collection-products' ? '' : state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : '<p class="product-empty">No products are in this collection.</p>'}
+      ${state.collectionProducts.length && state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : ''}
       ${state.collectionProductsHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-collection-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-collection-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
     </div>` : ''}
   </section>`;
