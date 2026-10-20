@@ -342,6 +342,22 @@ function resultsView() {
   </section>`;
 }
 
+function variantStockPresentation(variant) {
+  if (variant.tracked === false) {
+    return variant.availableForSale
+      ? { label: 'In stock', className: 'is-in-stock' }
+      : { label: 'Sold out', className: 'is-sold-out' };
+  }
+
+  if (typeof variant.inventoryQuantity === 'number' && Number.isFinite(variant.inventoryQuantity)) {
+    return variant.inventoryQuantity > 0
+      ? { label: 'In stock', className: 'is-in-stock' }
+      : { label: 'Sold out', className: 'is-sold-out' };
+  }
+
+  return { label: 'Stock unknown', className: 'is-unknown' };
+}
+
 function productSection() {
   const searching = state.productBusy === 'search';
   const productResults = state.selectedCollectionId ? [] : state.products;
@@ -364,19 +380,19 @@ function productSection() {
     ${state.productId ? `<section class="product-detail" aria-label="Selected product variants">
       <div class="product-detail-heading"><div class="product-detail-product">
         ${catalogImage(state.productFeaturedImage, state.productTitle, 'large')}
-        <div><p class="eyebrow">Sizes and current availability</p><h3>${esc(state.productTitle)}</h3><p>${esc(state.productStatus)}</p></div>
+         <div><p class="eyebrow">Sizes and stock status</p><h3>${esc(state.productTitle)}</h3><p>${esc(state.productStatus)}</p></div>
       </div>
         <button class="product-refresh" type="button" data-action="refresh-product" ${state.productBusy || state.busy ? 'disabled' : ''}>Refresh</button>
       </div>
       ${state.productBusy === 'variants' ? '<p class="product-empty">Loading live Shopify sizes…</p>' : ''}
       ${state.productVariants.length ? `<div class="product-size-list">${state.productVariants.map((variant) => {
-        const available = variant.availableForSale;
+        const stock = variantStockPresentation(variant);
         const disabled = !variant.inventoryItemId || Boolean(state.busy);
         return `<label class="product-size-row${disabled ? ' is-disabled' : ''}">
           <input type="checkbox" data-product-variant="${esc(variant.id)}" ${state.selectedVariantIds.includes(variant.id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} aria-label="Select size ${esc(variant.title)}">
           <span class="product-size-copy"><strong>${esc(variant.title)}</strong><small>${variant.sku ? `SKU ${esc(variant.sku)}` : variant.inventoryItemId ? 'No SKU' : 'No inventory item'}</small></span>
-          <span class="product-quantity">${variant.inventoryQuantity === null ? 'Qty unknown' : `Qty ${esc(variant.inventoryQuantity)}`}</span>
-          <span class="product-availability ${available ? 'is-available' : 'is-unavailable'}">${available ? 'Available' : 'Unavailable'}</span>
+          <span class="product-quantity">${typeof variant.inventoryQuantity === 'number' ? `Qty ${esc(variant.inventoryQuantity)}` : 'Qty unknown'}</span>
+          <span class="product-availability ${stock.className}">${stock.label}</span>
         </label>`;
       }).join('')}</div>` : ''}
       ${state.variantHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-variants" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-variants' ? 'Loading…' : 'Load more sizes'}</button></div>` : ''}
