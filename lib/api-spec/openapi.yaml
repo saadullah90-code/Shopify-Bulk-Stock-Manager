@@ -155,6 +155,90 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /shopify/collections:
+    get:
+      operationId: getShopifyCollections
+      tags: [shopify]
+      summary: List Shopify collections
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Shopify collections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionsResponse"
+        "400":
+          description: Invalid collection cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /shopify/collection-products:
+    get:
+      operationId: getShopifyCollectionProducts
+      tags: [shopify]
+      summary: List products belonging to a Shopify collection
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: collectionId
+          in: query
+          required: true
+          schema: { type: string, pattern: '^gid://shopify/Collection/[0-9]+$' }
+        - name: after
+          in: query
+          required: false
+          schema: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Products in this collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionProductsResponse"
+        "400":
+          description: Invalid collection ID or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Collection not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Authentication required
           content:
@@ -392,13 +476,25 @@ components:
           items:
             $ref: "#/components/schemas/Location"
       required: [locations]
+    ProductImage:
+      type: object
+      properties:
+        url: { type: string }
+        altText: { type: ["string", "null"] }
+      required: [url, altText]
     ProductSearchItem:
       type: object
       properties:
         id: { type: string }
         title: { type: string }
         status: { type: string }
-      required: [id, title, status]
+        featuredImage:
+          type: [object, "null"]
+          properties:
+            url: { type: string }
+            altText: { type: ["string", "null"] }
+          required: [url, altText]
+      required: [id, title, status, featuredImage]
     ProductSearchResponse:
       type: object
       properties:
@@ -408,6 +504,32 @@ components:
         hasNextPage: { type: boolean }
         endCursor: { type: ["string", "null"] }
       required: [products, hasNextPage, endCursor]
+    ShopifyCollection:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+      required: [id, title]
+    CollectionsResponse:
+      type: object
+      properties:
+        collections:
+          type: array
+          items: { $ref: "#/components/schemas/ShopifyCollection" }
+        hasNextPage: { type: boolean }
+        endCursor: { type: ["string", "null"] }
+      required: [collections, hasNextPage, endCursor]
+    CollectionProductsResponse:
+      type: object
+      properties:
+        collectionId: { type: string }
+        collectionTitle: { type: string }
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/ProductSearchItem" }
+        hasNextPage: { type: boolean }
+        endCursor: { type: ["string", "null"] }
+      required: [collectionId, collectionTitle, products, hasNextPage, endCursor]
     ProductSize:
       type: object
       properties:
@@ -425,12 +547,18 @@ components:
         productId: { type: string }
         title: { type: string }
         status: { type: string }
+        featuredImage:
+          type: [object, "null"]
+          properties:
+            url: { type: string }
+            altText: { type: ["string", "null"] }
+          required: [url, altText]
         variants:
           type: array
           items: { $ref: "#/components/schemas/ProductSize" }
         hasNextPage: { type: boolean }
         endCursor: { type: ["string", "null"] }
-      required: [productId, title, status, variants, hasNextPage, endCursor]
+      required: [productId, title, status, featuredImage, variants, hasNextPage, endCursor]
     ProductStockSelection:
       type: object
       properties:
