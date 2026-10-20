@@ -788,9 +788,6 @@ async function loadCollections(after = null) {
 
 async function loadCollectionProducts(collectionId = state.selectedCollectionId, after = null) {
   if (!collectionId || state.busy || state.productBusy) return;
-  const existingList = after ? root.querySelector('[data-preserve-scroll="collection-products"]') : null;
-  const previousScrollHeight = existingList?.scrollHeight ?? null;
-  let appendedNextPage = false;
   state.productBusy = after ? 'more-collection-products' : 'collection-products';
   state.productError = '';
   if (!after) {
@@ -816,7 +813,6 @@ async function loadCollectionProducts(collectionId = state.selectedCollectionId,
         state.collectionProducts = [...state.collectionProducts, ...nextProducts];
         state.collectionProductCursor = result.endCursor;
         state.collectionProductsHasNextPage = result.hasNextPage;
-        appendedNextPage = true;
       }
     } else {
       state.collectionProducts = result.products;
@@ -828,10 +824,16 @@ async function loadCollectionProducts(collectionId = state.selectedCollectionId,
   } finally {
     state.productBusy = '';
     render();
-    if (appendedNextPage && previousScrollHeight !== null) {
-      const list = root.querySelector('[data-preserve-scroll="collection-products"]');
-      if (list) list.scrollTop = Math.min(previousScrollHeight, list.scrollHeight - list.clientHeight);
-    }
+    if (state.selectedCollectionId === collectionId) maybeLoadMoreCollectionProducts();
+  }
+}
+
+function maybeLoadMoreCollectionProducts(list = root.querySelector('[data-preserve-scroll="collection-products"]')) {
+  if (!list || !state.collectionProductsHasNextPage || !state.collectionProductCursor
+    || state.productBusy || state.busy || state.productError) return;
+  const distanceToBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+  if (distanceToBottom <= 56) {
+    void loadCollectionProducts(state.selectedCollectionId, state.collectionProductCursor);
   }
 }
 
@@ -877,7 +879,7 @@ function collectionBrowser() {
       ${state.productBusy === 'collection-products' ? '<p class="product-empty">Loading collection products…</p>' : ''}
       ${state.collectionProducts.length ? `<div class="product-results" data-preserve-scroll="collection-products" aria-label="Products in this collection">${state.collectionProducts.map((product) => productCard(product, { selectable: true })).join('')}</div>` : state.productBusy === 'collection-products' ? '' : state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : '<p class="product-empty">No products are in this collection.</p>'}
       ${state.collectionProducts.length && state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : ''}
-      ${state.collectionProductsHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-collection-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-collection-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
+      ${state.productBusy === 'more-collection-products' ? '<p class="product-more-status" role="status">Loading more products…</p>' : state.collectionProductsHasNextPage ? '<p class="product-more-status">Scroll down to load more products.</p>' : ''}
     </div>` : ''}
   </section>`;
 }
@@ -1210,6 +1212,11 @@ async function deleteSelectedProducts() {
   }
 }
 
+root.addEventListener('scroll', (event) => {
+  const list = event.target.closest?.('[data-preserve-scroll="collection-products"]');
+  if (list) maybeLoadMoreCollectionProducts(list);
+}, true);
+
 root.addEventListener('submit', async (event) => {
   if (event.target.id !== 'login-form') return;
   event.preventDefault();
@@ -1438,9 +1445,6 @@ root.addEventListener('click', async (event) => {
     state.collectionProductsHasNextPage = false;
     delete state.scrollPositions['collection-products'];
     await loadCollectionProducts();
-  }
-  if (action === 'load-more-collection-products' && state.collectionProductCursor) {
-    await loadCollectionProducts(state.selectedCollectionId, state.collectionProductCursor);
   }
   if (action === 'open-product' && button.dataset.productId) {
     clearTimeout(productSearchTimer);

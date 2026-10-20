@@ -392,6 +392,7 @@ h1 { margin:0; font:700 clamp(32px, 4vw, 48px)/1.08 var(--display); letter-spaci
 .product-result small { margin-top:3px; color:var(--muted); font:10px var(--mono); }
 .product-empty { margin:12px 0; color:var(--muted); font-size:12px; }
 .product-more { display:flex; justify-content:center; margin-top:12px; }
+.product-more-status { margin:8px 0 0; color:var(--muted); font-size:10px; text-align:center; }
 .product-more .btn, .product-refresh { min-height:36px; font-size:11px; }
 .product-detail { margin-top:22px; padding-top:18px; border-top:1px solid var(--line); }
 .product-detail-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:13px; }
