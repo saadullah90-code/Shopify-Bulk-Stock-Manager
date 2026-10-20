@@ -5,9 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ProductImage } from './productImage';
 
 export interface ProductSearchItem {
   id: string;
   title: string;
   status: string;
+  featuredImage: ProductImage | null;
 }

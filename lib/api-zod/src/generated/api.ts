@@ -80,7 +80,62 @@ export const SearchShopifyProductsResponse = zod.object({
   "products": zod.array(zod.object({
   "id": zod.string(),
   "title": zod.string(),
-  "status": zod.string()
+  "status": zod.string(),
+  "featuredImage": zod.union([zod.object({
+  "url": zod.string(),
+  "altText": zod.string().nullable()
+}),zod.null()])
+})),
+  "hasNextPage": zod.boolean(),
+  "endCursor": zod.string().nullable()
+})
+
+
+/**
+ * @summary List Shopify collections
+ */
+export const getShopifyCollectionsQueryAfterMax = 500;
+
+
+
+export const GetShopifyCollectionsQueryParams = zod.object({
+  "after": zod.coerce.string().max(getShopifyCollectionsQueryAfterMax).optional()
+})
+
+export const GetShopifyCollectionsResponse = zod.object({
+  "collections": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string()
+})),
+  "hasNextPage": zod.boolean(),
+  "endCursor": zod.string().nullable()
+})
+
+
+/**
+ * @summary List products belonging to a Shopify collection
+ */
+export const getShopifyCollectionProductsQueryCollectionIdRegExp = new RegExp('^gid://shopify/Collection/[0-9]+$');
+export const getShopifyCollectionProductsQueryAfterMax = 500;
+
+
+
+export const GetShopifyCollectionProductsQueryParams = zod.object({
+  "collectionId": zod.coerce.string().regex(getShopifyCollectionProductsQueryCollectionIdRegExp),
+  "after": zod.coerce.string().max(getShopifyCollectionProductsQueryAfterMax).optional()
+})
+
+export const GetShopifyCollectionProductsResponse = zod.object({
+  "collectionId": zod.string(),
+  "collectionTitle": zod.string(),
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "status": zod.string(),
+  "featuredImage": zod.union([zod.object({
+  "url": zod.string(),
+  "altText": zod.string().nullable()
+}),zod.null()])
 })),
   "hasNextPage": zod.boolean(),
   "endCursor": zod.string().nullable()
@@ -104,6 +159,10 @@ export const GetShopifyProductVariantsResponse = zod.object({
   "productId": zod.string(),
   "title": zod.string(),
   "status": zod.string(),
+  "featuredImage": zod.union([zod.object({
+  "url": zod.string(),
+  "altText": zod.string().nullable()
+}),zod.null()]),
   "variants": zod.array(zod.object({
   "id": zod.string(),
   "title": zod.string(),

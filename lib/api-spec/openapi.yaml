@@ -155,6 +155,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Shopify connection or API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /shopify/collections:
     get:
       operationId: getShopifyCollections
@@ -229,18 +241,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Collection not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "502":
-          description: Shopify connection or API failure
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Authentication required
           content:
             application/json:
               schema:
@@ -489,11 +489,9 @@ components:
         title: { type: string }
         status: { type: string }
         featuredImage:
-          type: [object, "null"]
-          properties:
-            url: { type: string }
-            altText: { type: ["string", "null"] }
-          required: [url, altText]
+          anyOf:
+            - $ref: "#/components/schemas/ProductImage"
+            - type: "null"
       required: [id, title, status, featuredImage]
     ProductSearchResponse:
       type: object
@@ -548,11 +546,9 @@ components:
         title: { type: string }
         status: { type: string }
         featuredImage:
-          type: [object, "null"]
-          properties:
-            url: { type: string }
-            altText: { type: ["string", "null"] }
-          required: [url, altText]
+          anyOf:
+            - $ref: "#/components/schemas/ProductImage"
+            - type: "null"
         variants:
           type: array
           items: { $ref: "#/components/schemas/ProductSize" }

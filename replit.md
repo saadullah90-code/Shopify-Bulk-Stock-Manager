@@ -45,6 +45,8 @@ A private order-based tool for previewing and applying exact Shopify inventory q
 
 ## Product
 
+- The stock manager supports both product-name search and paginated Shopify collection browsing. Show Shopify featured images, and open a product to load its paginated sizes and live availability.
+- Collection and product browsing are read-only. Continue to use the same server-owned, expiring preview and explicit confirmation flow before any stock or tracking changes.
 - Parse/deduplicate numeric order numbers, resolve exact Shopify order names, paginate line items, and group duplicate inventory items.
 - Preview Sold Out (tracking on, all active stocked locations to `0`) or In Stock (tracking off, no quantity writes).
 - Require explicit confirmation, detect stale inventory, verify updates, and report partial results.

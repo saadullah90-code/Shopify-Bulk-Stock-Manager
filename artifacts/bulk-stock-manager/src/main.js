@@ -20,11 +20,21 @@ const state = {
   products: [],
   productCursor: null,
   productHasNextPage: false,
+  collections: [],
+  collectionCursor: null,
+  collectionHasNextPage: false,
+  collectionError: '',
+  selectedCollectionId: '',
+  selectedCollectionTitle: '',
+  collectionProducts: [],
+  collectionProductCursor: null,
+  collectionProductsHasNextPage: false,
   productBusy: '',
   productError: '',
   productId: '',
   productTitle: '',
   productStatus: '',
+  productFeaturedImage: null,
   productVariants: [],
   variantCursor: null,
   variantHasNextPage: false,
@@ -78,11 +88,33 @@ function clearProductSection() {
   state.products = [];
   state.productCursor = null;
   state.productHasNextPage = false;
+  state.collections = [];
+  state.collectionCursor = null;
+  state.collectionHasNextPage = false;
+  state.collectionError = '';
+  state.selectedCollectionId = '';
+  state.selectedCollectionTitle = '';
+  state.collectionProducts = [];
+  state.collectionProductCursor = null;
+  state.collectionProductsHasNextPage = false;
   state.productBusy = '';
   state.productError = '';
   state.productId = '';
   state.productTitle = '';
   state.productStatus = '';
+  state.productFeaturedImage = null;
+  state.productVariants = [];
+  state.variantCursor = null;
+  state.variantHasNextPage = false;
+  state.selectedVariantIds = [];
+}
+
+function clearSelectedProduct() {
+  productVariantGeneration += 1;
+  state.productId = '';
+  state.productTitle = '';
+  state.productStatus = '';
+  state.productFeaturedImage = null;
   state.productVariants = [];
   state.variantCursor = null;
   state.variantHasNextPage = false;
@@ -312,25 +344,28 @@ function resultsView() {
 
 function productSection() {
   const searching = state.productBusy === 'search';
+  const productResults = state.selectedCollectionId ? [] : state.products;
   return `<section class="panel product-panel" aria-labelledby="product-panel-title">
     <div class="panel-topline">
-      <div><p class="eyebrow">Second way to manage stock</p><h2 class="panel-title" id="product-panel-title">Find a product by name</h2></div>
+      <div><p class="eyebrow">Second way to manage stock</p><h2 class="panel-title" id="product-panel-title">Products and collections</h2></div>
       <span class="index-label">LIVE SHOPIFY DATA</span>
     </div>
     <label class="field-label" for="product-search">Product name <span class="field-hint">TYPE AT LEAST 2 CHARACTERS</span></label>
-    <div class="product-search-row">
+    <div class="product-search-row" style="margin-bottom:12px">
       <input class="field-control" id="product-search" type="search" maxlength="80" autocomplete="off" value="${esc(state.productSearch)}" placeholder="For example, Ralph Lauren slides" ${state.busy ? 'disabled' : ''} aria-label="Search Shopify products by name">
       <button class="btn btn-secondary" type="button" data-action="search-products" ${searching || state.busy || state.productSearch.trim().length < 2 ? 'disabled' : ''}>${searching ? 'Searching…' : 'Search'}</button>
     </div>
-    <p class="product-search-hint">${state.productError ? `<span role="alert" class="product-error">${esc(state.productError)}</span>` : state.productSearch.trim().length < 2 ? 'Enter at least 2 characters. Search reads product names; it does not change inventory.' : `${state.products.length} matching product${state.products.length === 1 ? '' : 's'} shown.`}</p>
-    ${state.products.length ? `<div class="product-results" aria-label="Matching Shopify products">
-      ${state.products.map((product) => `<button class="product-result" type="button" data-action="open-product" data-product-id="${esc(product.id)}" ${state.productBusy || state.busy ? 'disabled' : ''}>
-        <span><strong>${esc(product.title)}</strong><small>${esc(product.status)}</small></span><span class="arrow" aria-hidden="true">→</span>
-      </button>`).join('')}
+    <p class="product-search-hint">${state.productError && !state.selectedCollectionId ? `<span role="alert" class="product-error">${esc(state.productError)}</span>` : state.productSearch.trim().length < 2 ? 'Search products by name, or browse every Shopify collection below.' : `${productResults.length} matching product${productResults.length === 1 ? '' : 's'} shown.`}</p>
+    ${productResults.length ? `<div class="product-results" aria-label="Matching Shopify products">
+      ${productResults.map(productCard).join('')}
     </div>` : searching ? '<p class="product-empty">Searching Shopify…</p>' : state.productSearch.trim().length >= 2 && !state.productError ? '<p class="product-empty">No products found. Try another part of the product name.</p>' : ''}
     ${state.productHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
+    ${collectionBrowser()}
     ${state.productId ? `<section class="product-detail" aria-label="Selected product variants">
-      <div class="product-detail-heading"><div><p class="eyebrow">Sizes and current availability</p><h3>${esc(state.productTitle)}</h3><p>${esc(state.productStatus)}</p></div>
+      <div class="product-detail-heading"><div class="product-detail-product">
+        ${catalogImage(state.productFeaturedImage, state.productTitle, 'large')}
+        <div><p class="eyebrow">Sizes and current availability</p><h3>${esc(state.productTitle)}</h3><p>${esc(state.productStatus)}</p></div>
+      </div>
         <button class="product-refresh" type="button" data-action="refresh-product" ${state.productBusy || state.busy ? 'disabled' : ''}>Refresh</button>
       </div>
       ${state.productBusy === 'variants' ? '<p class="product-empty">Loading live Shopify sizes…</p>' : ''}
@@ -443,6 +478,7 @@ async function checkSession() {
     }
   }
   render();
+  if (state.authenticated) await loadCollections();
 }
 
 function getPayload() {
@@ -512,6 +548,96 @@ async function searchProducts(after = null, generation = ++productSearchGenerati
   }
 }
 
+async function loadCollections(after = null) {
+  if (state.busy || state.productBusy) return;
+  state.productBusy = after ? 'more-collections' : 'collections';
+  state.collectionError = '';
+  if (!after) {
+    state.collections = [];
+    state.collectionCursor = null;
+    state.collectionHasNextPage = false;
+  }
+  render();
+  try {
+    const params = new URLSearchParams();
+    if (after) params.set('after', after);
+    const result = await request(`/api/shopify/collections${params.size ? `?${params}` : ''}`);
+    state.collections = after ? [...state.collections, ...result.collections] : result.collections;
+    state.collectionCursor = result.endCursor;
+    state.collectionHasNextPage = result.hasNextPage;
+  } catch (error) {
+    state.collectionError = error.message || 'Could not load Shopify collections.';
+  } finally {
+    state.productBusy = '';
+    render();
+  }
+}
+
+async function loadCollectionProducts(collectionId = state.selectedCollectionId, after = null) {
+  if (!collectionId || state.busy || state.productBusy) return;
+  state.productBusy = after ? 'more-collection-products' : 'collection-products';
+  state.productError = '';
+  if (!after) {
+    state.collectionProducts = [];
+    state.collectionProductCursor = null;
+    state.collectionProductsHasNextPage = false;
+  }
+  render();
+  try {
+    const params = new URLSearchParams({ collectionId });
+    if (after) params.set('after', after);
+    const result = await request(`/api/shopify/collection-products?${params}`);
+    if (state.selectedCollectionId !== collectionId) return;
+    state.selectedCollectionTitle = result.collectionTitle;
+    state.collectionProducts = after ? [...state.collectionProducts, ...result.products] : result.products;
+    state.collectionProductCursor = result.endCursor;
+    state.collectionProductsHasNextPage = result.hasNextPage;
+  } catch (error) {
+    state.productError = error.message || 'Could not load products in this collection.';
+  } finally {
+    state.productBusy = '';
+    render();
+  }
+}
+
+function catalogImage(image, title, size = 'small') {
+  let url = '';
+  try {
+    const candidate = new URL(image?.url);
+    if (candidate.protocol === 'https:') url = esc(candidate.href);
+  } catch { /* Some products have no usable featured image. */ }
+  return url
+    ? `<img class="catalog-image catalog-image-${size}" src="${url}" alt="${esc(image?.altText || title)}" loading="lazy" referrerpolicy="no-referrer">`
+    : `<span class="catalog-image-placeholder catalog-image-placeholder-${size}" role="img" aria-label="No product image"><span>No image</span></span>`;
+}
+
+function productCard(product) {
+  return `<button class="product-result product-result-with-image" type="button" data-action="open-product" data-product-id="${esc(product.id)}" data-product-title="${esc(product.title)}" ${state.productBusy || state.busy ? 'disabled' : ''}>
+    ${catalogImage(product.featuredImage, product.title)}
+    <span class="product-result-copy"><strong>${esc(product.title)}</strong><small>${esc(product.status)}</small></span>
+    <span class="arrow" aria-hidden="true">→</span>
+  </button>`;
+}
+
+function collectionBrowser() {
+  return `<section class="collection-browser" aria-labelledby="collection-browser-title">
+    <div class="collection-browser-heading"><div><p class="eyebrow">Browse your Shopify catalog</p><h3 id="collection-browser-title">Collections</h3></div>
+      <button class="product-refresh" type="button" data-action="refresh-collections" ${state.productBusy || state.busy ? 'disabled' : ''}>Refresh collections</button>
+    </div>
+    <p class="product-search-hint">${state.collectionError ? `<span role="alert" class="product-error">${esc(state.collectionError)}</span>` : state.productBusy === 'collections' ? 'Loading Shopify collections…' : `${state.collections.length} collection${state.collections.length === 1 ? '' : 's'} loaded. Open one to browse its products.`}</p>
+    ${state.collections.length ? `<div class="collection-list">
+      ${state.collections.map((collection) => `<button class="collection-result${state.selectedCollectionId === collection.id ? ' is-selected' : ''}" type="button" data-action="open-collection" data-collection-id="${esc(collection.id)}" data-collection-title="${esc(collection.title)}" ${state.productBusy || state.busy ? 'disabled' : ''} aria-pressed="${state.selectedCollectionId === collection.id}">${esc(collection.title)}<span aria-hidden="true">→</span></button>`).join('')}
+    </div>` : state.productBusy === 'collections' ? '' : '<p class="product-empty">No Shopify collections were found.</p>'}
+    ${state.collectionHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-collections" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-collections' ? 'Loading…' : 'Load more collections'}</button></div>` : ''}
+    ${state.selectedCollectionId ? `<div class="collection-products">
+      <div class="collection-products-heading"><h4>${esc(state.selectedCollectionTitle || 'Collection products')}</h4><span>${state.collectionProducts.length} shown</span></div>
+      ${state.productBusy === 'collection-products' ? '<p class="product-empty">Loading collection products…</p>' : ''}
+      ${state.collectionProducts.length ? `<div class="product-results">${state.collectionProducts.map(productCard).join('')}</div>` : state.productBusy === 'collection-products' ? '' : state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : '<p class="product-empty">No products are in this collection.</p>'}
+      ${state.collectionProductsHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-collection-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-collection-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
+    </div>` : ''}
+  </section>`;
+}
+
 async function loadProductVariants(productId = state.productId, after = null) {
   if (!productId || state.busy) return;
   const generation = ++productVariantGeneration;
@@ -526,6 +652,7 @@ async function loadProductVariants(productId = state.productId, after = null) {
     if (state.productId !== productId || generation !== productVariantGeneration) return;
     state.productTitle = result.title;
     state.productStatus = result.status;
+    state.productFeaturedImage = result.featuredImage;
     state.productVariants = after ? [...state.productVariants, ...result.variants] : result.variants;
     state.variantCursor = result.endCursor;
     state.variantHasNextPage = result.hasNextPage;
@@ -666,6 +793,7 @@ root.addEventListener('submit', async (event) => {
     state.busy = '';
     render();
   }
+    if (state.authenticated) await loadCollections();
 });
 
 root.addEventListener('input', (event) => {
@@ -684,6 +812,12 @@ root.addEventListener('input', (event) => {
   if (event.target.id === 'product-search') {
     state.productSearch = event.target.value;
     clearOperation();
+    clearSelectedProduct();
+    state.selectedCollectionId = '';
+    state.selectedCollectionTitle = '';
+    state.collectionProducts = [];
+    state.collectionProductCursor = null;
+    state.collectionProductsHasNextPage = false;
     clearTimeout(productSearchTimer);
     const generation = ++productSearchGeneration;
     state.productError = '';
@@ -748,6 +882,29 @@ root.addEventListener('click', async (event) => {
   if (action === 'load-more-products' && state.productCursor) {
     await searchProducts(state.productCursor);
   }
+  if (action === 'refresh-collections') await loadCollections();
+  if (action === 'load-more-collections' && state.collectionCursor) {
+    await loadCollections(state.collectionCursor);
+  }
+  if (action === 'open-collection' && button.dataset.collectionId) {
+    clearTimeout(productSearchTimer);
+    productSearchGeneration += 1;
+    clearOperation();
+    clearSelectedProduct();
+    state.productSearch = '';
+    state.products = [];
+    state.productCursor = null;
+    state.productHasNextPage = false;
+    state.selectedCollectionId = button.dataset.collectionId;
+    state.selectedCollectionTitle = button.dataset.collectionTitle || 'Collection';
+    state.collectionProducts = [];
+    state.collectionProductCursor = null;
+    state.collectionProductsHasNextPage = false;
+    await loadCollectionProducts();
+  }
+  if (action === 'load-more-collection-products' && state.collectionProductCursor) {
+    await loadCollectionProducts(state.selectedCollectionId, state.collectionProductCursor);
+  }
   if (action === 'open-product' && button.dataset.productId) {
     clearTimeout(productSearchTimer);
     productSearchGeneration += 1;
@@ -755,6 +912,7 @@ root.addEventListener('click', async (event) => {
     state.productId = button.dataset.productId;
     state.productTitle = button.querySelector('strong')?.textContent || 'Product';
     state.productStatus = '';
+    state.productFeaturedImage = null;
     state.productVariants = [];
     state.variantCursor = null;
     state.variantHasNextPage = false;

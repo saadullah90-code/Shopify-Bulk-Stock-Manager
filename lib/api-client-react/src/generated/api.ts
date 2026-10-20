@@ -22,7 +22,11 @@ import type {
 import type {
   ApplyInput,
   ApplyResponse,
+  CollectionProductsResponse,
+  CollectionsResponse,
   ErrorResponse,
+  GetShopifyCollectionProductsParams,
+  GetShopifyCollectionsParams,
   GetShopifyProductVariantsParams,
   HealthStatus,
   LocationsResponse,
@@ -529,6 +533,174 @@ export function useSearchShopifyProducts<TData = Awaited<ReturnType<typeof searc
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchShopifyProductsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetShopifyCollectionsUrl = (params?: GetShopifyCollectionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/shopify/collections?${stringifiedParams}` : `/api/shopify/collections`
+}
+
+/**
+ * @summary List Shopify collections
+ */
+export const getShopifyCollections = async (params?: GetShopifyCollectionsParams, options?: Parameters<typeof customFetch>[1]): Promise<CollectionsResponse> => {
+
+  return customFetch<CollectionsResponse>(getGetShopifyCollectionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetShopifyCollectionsQueryKey = (params?: GetShopifyCollectionsParams,) => {
+    return [
+    `/api/shopify/collections`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetShopifyCollectionsQueryOptions = <TData = Awaited<ReturnType<typeof getShopifyCollections>>, TError = ErrorType<ErrorResponse>>(params?: GetShopifyCollectionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShopifyCollections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetShopifyCollectionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getShopifyCollections>>> = ({ signal }) => getShopifyCollections(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getShopifyCollections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetShopifyCollectionsQueryResult = NonNullable<Awaited<ReturnType<typeof getShopifyCollections>>>
+export type GetShopifyCollectionsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List Shopify collections
+ */
+
+export function useGetShopifyCollections<TData = Awaited<ReturnType<typeof getShopifyCollections>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetShopifyCollectionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShopifyCollections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetShopifyCollectionsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetShopifyCollectionProductsUrl = (params: GetShopifyCollectionProductsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/shopify/collection-products?${stringifiedParams}` : `/api/shopify/collection-products`
+}
+
+/**
+ * @summary List products belonging to a Shopify collection
+ */
+export const getShopifyCollectionProducts = async (params: GetShopifyCollectionProductsParams, options?: Parameters<typeof customFetch>[1]): Promise<CollectionProductsResponse> => {
+
+  return customFetch<CollectionProductsResponse>(getGetShopifyCollectionProductsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetShopifyCollectionProductsQueryKey = (params?: GetShopifyCollectionProductsParams,) => {
+    return [
+    `/api/shopify/collection-products`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetShopifyCollectionProductsQueryOptions = <TData = Awaited<ReturnType<typeof getShopifyCollectionProducts>>, TError = ErrorType<ErrorResponse>>(params: GetShopifyCollectionProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShopifyCollectionProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetShopifyCollectionProductsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getShopifyCollectionProducts>>> = ({ signal }) => getShopifyCollectionProducts(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getShopifyCollectionProducts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetShopifyCollectionProductsQueryResult = NonNullable<Awaited<ReturnType<typeof getShopifyCollectionProducts>>>
+export type GetShopifyCollectionProductsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List products belonging to a Shopify collection
+ */
+
+export function useGetShopifyCollectionProducts<TData = Awaited<ReturnType<typeof getShopifyCollectionProducts>>, TError = ErrorType<ErrorResponse>>(
+ params: GetShopifyCollectionProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShopifyCollectionProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetShopifyCollectionProductsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

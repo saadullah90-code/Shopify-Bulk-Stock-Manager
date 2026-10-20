@@ -35,13 +35,41 @@ export interface LocationsResponse {
   locations: Location[];
 }
 
+export interface ProductImage {
+  url: string;
+  /** @nullable */
+  altText: string | null;
+}
+
 export interface ProductSearchItem {
   id: string;
   title: string;
   status: string;
+  featuredImage: ProductImage | null;
 }
 
 export interface ProductSearchResponse {
+  products: ProductSearchItem[];
+  hasNextPage: boolean;
+  /** @nullable */
+  endCursor: string | null;
+}
+
+export interface ShopifyCollection {
+  id: string;
+  title: string;
+}
+
+export interface CollectionsResponse {
+  collections: ShopifyCollection[];
+  hasNextPage: boolean;
+  /** @nullable */
+  endCursor: string | null;
+}
+
+export interface CollectionProductsResponse {
+  collectionId: string;
+  collectionTitle: string;
   products: ProductSearchItem[];
   hasNextPage: boolean;
   /** @nullable */
@@ -66,6 +94,7 @@ export interface ProductVariantsResponse {
   productId: string;
   title: string;
   status: string;
+  featuredImage: ProductImage | null;
   variants: ProductSize[];
   hasNextPage: boolean;
   /** @nullable */
@@ -255,6 +284,24 @@ export type SearchShopifyProductsParams = {
  * @maxLength 80
  */
 search: string;
+/**
+ * @maxLength 500
+ */
+after?: string;
+};
+
+export type GetShopifyCollectionsParams = {
+/**
+ * @maxLength 500
+ */
+after?: string;
+};
+
+export type GetShopifyCollectionProductsParams = {
+/**
+ * @pattern ^gid://shopify/Collection/[0-9]+$
+ */
+collectionId: string;
 /**
  * @maxLength 500
  */

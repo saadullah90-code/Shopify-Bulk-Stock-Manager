@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { VariantResult, InventoryLocationResult, OrderResult, ProductSize } from "@workspace/api-zod";
+import type {
+  ProductImage as ApiProductImage,
+  ShopifyCollection as ApiShopifyCollection,
+  VariantResult, InventoryLocationResult, OrderResult, ProductSize,
+} from "@workspace/api-zod";
 import { assertShopifyPermissions, ShopifyApiError, shopifyGraphql, shopifyMutation, shopifyUserErrors } from "./shopify-client";
 
 export type StockAction = "sold_out" | "in_stock";
@@ -50,6 +54,7 @@ export interface ShopifyProduct {
   id: string;
   title: string;
   status: string;
+  featuredImage: ApiProductImage | null;
 }
 
 interface ShopifyVariant {
@@ -70,7 +75,7 @@ export async function searchShopifyProducts(
   const data: { products: Connection<ShopifyProduct> } = await shopifyGraphql(`
     query SearchProductsByTitle($query: String!, $after: String) {
       products(first: 20, after: $after, query: $query, sortKey: TITLE) {
-        nodes { id title status }
+        nodes { id title status featuredImage { url altText } }
         pageInfo { hasNextPage endCursor }
       }
     }`, { query: `title:*"${escaped}"*`, after });
@@ -81,24 +86,75 @@ export async function searchShopifyProducts(
   };
 }
 
+export async function readShopifyCollections(
+  after: string | null,
+): Promise<{ collections: ApiShopifyCollection[]; hasNextPage: boolean; endCursor: string | null }> {
+  await assertShopifyPermissions();
+  const data: { collections: Connection<ApiShopifyCollection> } = await shopifyGraphql(`
+    query ReadCollections($after: String) {
+      collections(first: 50, after: $after) {
+        nodes { id title }
+        pageInfo { hasNextPage endCursor }
+      }
+    }`, { after });
+  return {
+    collections: data.collections.nodes,
+    hasNextPage: data.collections.pageInfo.hasNextPage,
+    endCursor: nextPage(data.collections.pageInfo, after),
+  };
+}
+
+export async function readShopifyCollectionProducts(
+  collectionId: string, after: string | null,
+): Promise<{
+  collectionId: string;
+  collectionTitle: string;
+  products: ShopifyProduct[];
+  hasNextPage: boolean;
+  endCursor: string | null;
+} | null> {
+  await assertShopifyPermissions();
+  const data: { collection: {
+    id: string; title: string; products: Connection<ShopifyProduct>;
+  } | null } = await shopifyGraphql(`
+    query ReadCollectionProducts($id: ID!, $after: String) {
+      collection(id: $id) {
+        id title
+        products(first: 24, after: $after) {
+          nodes { id title status featuredImage { url altText } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }`, { id: collectionId, after });
+  if (!data.collection) return null;
+  return {
+    collectionId: data.collection.id,
+    collectionTitle: data.collection.title,
+    products: data.collection.products.nodes,
+    hasNextPage: data.collection.products.pageInfo.hasNextPage,
+    endCursor: nextPage(data.collection.products.pageInfo, after),
+  };
+}
+
 export async function readShopifyProductVariants(
   productId: string, after: string | null,
 ): Promise<{
   productId: string;
   title: string;
   status: string;
+  featuredImage: ApiProductImage | null;
   variants: ProductSize[];
   hasNextPage: boolean;
   endCursor: string | null;
 } | null> {
   await assertShopifyPermissions();
   const data: { product: {
-    id: string; title: string; status: string;
+    id: string; title: string; status: string; featuredImage: ApiProductImage | null;
     variants: Connection<ShopifyVariant>;
   } | null } = await shopifyGraphql(`
     query ProductVariantAvailability($id: ID!, $after: String) {
       product(id: $id) {
-        id title status
+        id title status featuredImage { url altText }
         variants(first: 100, after: $after) {
           nodes {
             id title sku availableForSale inventoryQuantity inventoryPolicy
@@ -114,6 +170,7 @@ export async function readShopifyProductVariants(
     productId: product.id,
     title: product.title,
     status: product.status,
+    featuredImage: product.featuredImage,
     variants: product.variants.nodes.map(({ inventoryItem, inventoryPolicy: _policy, ...variant }) => ({
       ...variant,
       inventoryItemId: inventoryItem?.id ?? null,

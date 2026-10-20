@@ -5,12 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ProductImage } from './productImage';
 import type { ProductSize } from './productSize';
 
 export interface ProductVariantsResponse {
   productId: string;
   title: string;
   status: string;
+  featuredImage: ProductImage | null;
   variants: ProductSize[];
   hasNextPage: boolean;
   /** @nullable */

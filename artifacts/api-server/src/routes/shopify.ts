@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   ApplyChangesBody, ApplyChangesResponse, GetLocationsResponse,
+  GetShopifyCollectionProductsResponse, GetShopifyCollectionsQueryParams,
+  GetShopifyCollectionsResponse, getShopifyCollectionProductsQueryCollectionIdRegExp,
   getShopifyProductVariantsQueryProductIdRegExp, GetShopifyProductVariantsResponse,
   PreviewOrdersBody, PreviewOrdersResponse, PreviewShopifyProductStockBody,
   PreviewShopifyProductStockResponse, SearchShopifyProductsQueryParams,
@@ -11,7 +13,8 @@ import { getAppSession, hasSameOrigin } from "../lib/app-session";
 import { ShopifyApiError, assertShopifyPermissions } from "../lib/shopify-client";
 import {
   applyStockVariant, buildProductStockPreview, buildStockPreview, discoverLocations,
-  parseOrders, readShopifyProductVariants, searchShopifyProducts, stockSummary,
+  parseOrders, readShopifyCollectionProducts, readShopifyCollections, readShopifyProductVariants,
+  searchShopifyProducts, stockSummary,
 } from "../lib/stock-manager";
 
 const router: IRouter = Router();
@@ -80,6 +83,38 @@ router.get("/shopify/products", async (req, res): Promise<void> => {
   try {
     const result = await searchShopifyProducts(parsed.data.search.trim(), parsed.data.after ?? null);
     res.json(SearchShopifyProductsResponse.parse(result));
+  } catch (error) { failure(req, res, error); }
+});
+
+router.get("/shopify/collections", async (req, res): Promise<void> => {
+  if (!session(req, res)) return;
+  const parsed = GetShopifyCollectionsQueryParams.safeParse({ after: req.query.after });
+  if (!parsed.success || (req.query.after !== undefined && typeof req.query.after !== "string")) {
+    res.status(400).json({ error: "Reload collections and try again." });
+    return;
+  }
+  try {
+    const result = await readShopifyCollections(parsed.data.after ?? null);
+    res.json(GetShopifyCollectionsResponse.parse(result));
+  } catch (error) { failure(req, res, error); }
+});
+
+router.get("/shopify/collection-products", async (req, res): Promise<void> => {
+  if (!session(req, res)) return;
+  const collectionId = req.query.collectionId;
+  const after = req.query.after;
+  if (typeof collectionId !== "string" || !getShopifyCollectionProductsQueryCollectionIdRegExp.test(collectionId) ||
+      (after !== undefined && (typeof after !== "string" || after.length > 500))) {
+    res.status(400).json({ error: "Select a valid Shopify collection and try again." });
+    return;
+  }
+  try {
+    const result = await readShopifyCollectionProducts(collectionId, typeof after === "string" ? after : null);
+    if (!result) {
+      res.status(404).json({ error: "This Shopify collection no longer exists. Reload collections." });
+      return;
+    }
+    res.json(GetShopifyCollectionProductsResponse.parse(result));
   } catch (error) { failure(req, res, error); }
 });
 
