@@ -42,6 +42,8 @@ const state = {
   variantHasNextPage: false,
   selectedVariantIds: [],
   previewSource: '',
+  applyDialogOpen: false,
+  applyFeedback: null,
   selectedDeleteProducts: [],
   deleteReviewOpen: false,
   deleteConfirmed: false,
@@ -87,6 +89,8 @@ function clearOperation() {
   state.error = '';
   state.confirmed = false;
   state.previewSource = '';
+  state.applyDialogOpen = false;
+  state.applyFeedback = null;
 }
 
 function clearProductSection() {
@@ -360,6 +364,61 @@ function resultsView() {
   </section>`;
 }
 
+function inventoryDialog() {
+  if (state.applyDialogOpen && state.preview) {
+    const preview = state.preview;
+    const eligible = preview.variants.filter((item) => item.eligible && item.updateStatus !== 'skipped');
+    const soldOut = preview.action === 'sold_out';
+    const locationCount = eligible.reduce((count, variant) => count + (variant.locations || []).filter((location) =>
+      location.stocked && location.active === true,
+    ).length, 0);
+    return `<div class="dialog-backdrop" data-dialog-backdrop>
+      <section class="inventory-dialog" role="alertdialog" aria-modal="true" aria-labelledby="inventory-dialog-title" aria-describedby="inventory-dialog-description" data-inventory-dialog>
+        <div class="dialog-mark is-warning" aria-hidden="true">!</div>
+        <p class="eyebrow">Final confirmation</p>
+        <h2 id="inventory-dialog-title">${soldOut ? 'Set selected stock to sold out?' : 'Set selected products in stock?'}</h2>
+        <p id="inventory-dialog-description" class="dialog-copy">${soldOut
+          ? `This will enable tracking and set available quantity to 0 at ${locationCount} active stocked location${locationCount === 1 ? '' : 's'}.`
+          : 'This will disable inventory tracking for the selected variants. Shopify quantities will not be written or restored.'} This changes live Shopify data.</p>
+        <div class="dialog-variant-list" aria-label="Variants included in this change">
+          ${eligible.map((variant) => `<article class="dialog-variant">
+            <strong>${esc(variant.productTitle || '')}${variant.productTitle ? ' · ' : ''}${esc(variant.variantTitle || variant.title || 'Variant')}</strong>
+            ${soldOut ? `<ul>${(variant.locations || []).map((location) => `<li>${esc(location.name)}: ${esc(location.currentQuantity ?? 'Unknown')} → ${location.stocked && location.active === true ? '0' : 'unchanged'}${location.active === false ? ' · inactive' : ''}</li>`).join('')}</ul>` : '<p>Inventory tracking: Off → On. No quantity writes.</p>'}
+          </article>`).join('')}
+        </div>
+        <div class="dialog-warning">Review the exact variants and location quantities above before continuing. This action cannot be automatically undone.</div>
+        <div class="dialog-actions">
+          <button class="btn btn-secondary" type="button" data-action="cancel-apply" data-dialog-secondary>Go back</button>
+          <button class="btn btn-danger" type="button" data-action="confirm-apply" data-dialog-primary>Confirm and apply</button>
+        </div>
+      </section>
+    </div>`;
+  }
+
+  if (state.applyFeedback) {
+    const feedback = state.applyFeedback;
+    const complete = feedback.kind === 'success';
+    const summary = feedback.summary || {};
+    return `<div class="dialog-backdrop" data-dialog-backdrop>
+      <section class="inventory-dialog feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="inventory-feedback-title" data-inventory-dialog>
+        <div class="dialog-mark ${complete ? 'is-success' : 'is-error'}" aria-hidden="true">${complete ? '✓' : '!'}</div>
+        <p class="eyebrow">${complete ? 'Shopify update confirmed' : 'Update needs attention'}</p>
+        <h2 id="inventory-feedback-title">${esc(feedback.title)}</h2>
+        <p class="dialog-copy">${esc(feedback.message)}</p>
+        ${feedback.summary ? `<div class="dialog-stats">
+          <div><strong>${esc(summary.successfulUpdates ?? 0)}</strong><span>Updated</span></div>
+          <div><strong>${esc(summary.failedUpdates ?? 0)}</strong><span>Failed</span></div>
+          <div><strong>${esc(summary.skippedItems ?? 0)}</strong><span>Skipped</span></div>
+        </div>` : ''}
+        <div class="dialog-actions">
+          <button class="btn ${complete ? 'btn-primary' : 'btn-secondary'}" type="button" data-action="dismiss-apply-feedback" data-dialog-primary>View detailed results</button>
+        </div>
+      </section>
+    </div>`;
+  }
+  return '';
+}
+
 function variantStockPresentation(variant) {
   if (variant.tracked === false) {
     return variant.availableForSale
@@ -485,10 +544,12 @@ function appView() {
       ${productSection()}
     </section>`}
     <div class="footer-line"><span>SHOPIFY BULK STOCK MANAGER</span><span>NO CHANGE WITHOUT EXPLICIT CONFIRMATION</span></div>
-  </main>`;
+  </main>
+  ${inventoryDialog()}`;
 }
 
 function render() {
+  const dialogWasOpen = Boolean(root.querySelector('[data-inventory-dialog]'));
   const searchHasFocus = document.activeElement?.id === 'product-search';
   const focusedAction = document.activeElement?.dataset?.action || '';
   const focusedSection = document.activeElement?.dataset?.section || '';
@@ -527,6 +588,9 @@ function render() {
     [...root.querySelectorAll('[data-action="switch-section"]')]
       .find((button) => button.dataset.section === focusedSection)
       ?.focus({ preventScroll: true });
+  }
+  if (!dialogWasOpen && (state.applyDialogOpen || state.applyFeedback)) {
+    root.querySelector('[data-dialog-primary]')?.focus({ preventScroll: true });
   }
 }
 
@@ -875,11 +939,9 @@ async function applyChanges() {
     return;
   }
   const eligible = state.preview.variants.filter((item) => item.eligible);
-  if (!eligible.length || !window.confirm(
-    state.preview.action === 'sold_out'
-      ? `Enable tracking and set ${eligible.length} confirmed variant(s) to exactly 0 available at every active stocked location shown? Inactive locations are skipped. CONTINUE selling policy can still permit sales. This changes real inventory.`
-      : `Disable inventory tracking for ${eligible.length} confirmed variant(s)? No quantities will be written or restored. Availability still depends on product status, channels, and Shopify settings.`,
-  )) return;
+  if (!eligible.length) return;
+  state.applyDialogOpen = false;
+  state.applyFeedback = null;
   state.busy = 'apply';
   state.error = '';
   render();
@@ -889,20 +951,43 @@ async function applyChanges() {
       body: JSON.stringify({ previewId: state.preview.previewId, confirmed: true }),
     });
     clearTimeout(previewExpiryTimer);
-    if (!state.applyResult || !Array.isArray(state.applyResult.variants)) {
+    const summary = state.applyResult?.summary;
+    if (!state.applyResult || !Array.isArray(state.applyResult.variants) ||
+      !summary || !['successfulUpdates', 'failedUpdates', 'skippedItems'].every((key) => Number.isFinite(Number(summary[key])))) {
       state.applyResult = null;
       state.error = 'The apply response was incomplete. Refresh inventory before continuing.';
-    } else if (state.previewSource === 'product' && state.productId) {
-      try {
-        await refreshProductAvailability();
-      } catch (error) {
-        state.productError = `Update results are shown below, but availability could not be refreshed: ${error.message || 'Use Refresh to reload the sizes.'}`;
+      state.applyFeedback = {
+        kind: 'error',
+        title: 'Shopify returned an incomplete result',
+        message: 'The response could not confirm every variant. Refresh Shopify inventory and review the results before retrying.',
+      };
+    } else {
+      const hasFailures = Number(summary.failedUpdates) > 0;
+      state.applyFeedback = {
+        kind: hasFailures ? 'error' : 'success',
+        title: hasFailures ? 'Some updates need attention' : 'Your changes are complete',
+        message: hasFailures
+          ? 'Shopify reported failed or unverified changes. Check each variant and location below before trying again.'
+          : 'Shopify confirmed the requested changes. You can review the exact variant and location results below.',
+        summary,
+      };
+      if (state.previewSource === 'product' && state.productId) {
+        try {
+          await refreshProductAvailability();
+        } catch (error) {
+          state.productError = `Update results are shown below, but availability could not be refreshed: ${error.message || 'Use Refresh to reload the sizes.'}`;
+        }
       }
     }
   } catch (error) {
     state.error = error.message || 'The inventory update could not be completed.';
     state.preview = null;
     state.confirmed = false;
+    state.applyFeedback = {
+      kind: 'error',
+      title: 'The update could not be confirmed',
+      message: `${state.error} Check Shopify and refresh the preview before trying again.`,
+    };
     clearTimeout(previewExpiryTimer);
   } finally {
     state.busy = '';
@@ -1072,6 +1157,28 @@ root.addEventListener('change', (event) => {
 });
 
 root.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && (state.applyDialogOpen || state.applyFeedback)) {
+    event.preventDefault();
+    if (state.applyDialogOpen) state.applyDialogOpen = false;
+    else state.applyFeedback = null;
+    render();
+    return;
+  }
+  if (event.key === 'Tab' && (state.applyDialogOpen || state.applyFeedback)) {
+    const dialog = root.querySelector('[data-inventory-dialog]');
+    const focusable = [...(dialog?.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
+    if (focusable.length) {
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  }
   if (event.target.id === 'product-search' && event.key === 'Enter') {
     event.preventDefault();
     clearTimeout(productSearchTimer);
@@ -1080,6 +1187,12 @@ root.addEventListener('keydown', (event) => {
 });
 
 root.addEventListener('click', async (event) => {
+  if (event.target.matches('[data-dialog-backdrop]')) {
+    if (state.applyDialogOpen) state.applyDialogOpen = false;
+    else state.applyFeedback = null;
+    render();
+    return;
+  }
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const action = button.dataset.action;
@@ -1111,7 +1224,20 @@ root.addEventListener('click', async (event) => {
   }
   if (action === 'confirm-product-delete') await deleteSelectedProducts();
   if (action === 'preview') await preview();
-  if (action === 'apply') await applyChanges();
+  if (action === 'apply') {
+    state.applyDialogOpen = true;
+    render();
+  }
+  if (action === 'cancel-apply') {
+    state.applyDialogOpen = false;
+    render();
+  }
+  if (action === 'confirm-apply') await applyChanges();
+  if (action === 'dismiss-apply-feedback') {
+    state.applyFeedback = null;
+    render();
+    root.querySelector('[data-testid="status-apply-complete"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
   if (action === 'search-products') {
     clearTimeout(productSearchTimer);
     await searchProducts();
