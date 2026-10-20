@@ -236,6 +236,18 @@ h1 { margin:0; font:700 clamp(32px, 4vw, 48px)/1.08 var(--display); letter-spaci
 .dialog-stats div { display:grid; gap:5px; padding:13px; background:#fffefa; }
 .dialog-stats strong { font:700 22px/1 var(--display); }
 .dialog-stats span { color:var(--muted); font:9px var(--mono); text-transform:uppercase; }
+.save-toast {
+  position:fixed; z-index:100; right:20px; bottom:20px; display:flex; align-items:center; gap:10px;
+  width:max-content; max-width:min(340px,calc(100vw - 28px)); min-height:52px; padding:9px 11px;
+  border:1px solid #c6d7c8; border-radius:9px; background:#f1f7ef; color:#294b3a;
+  box-shadow:0 8px 28px #15221c24; animation:dialog-in .16s ease-out;
+}
+.save-toast-icon { display:grid; flex:none; place-items:center; width:28px; height:28px; border-radius:50%; background:#dcebdd; color:#315c3c; font-weight:700; }
+.save-toast-copy { display:grid; gap:2px; min-width:0; }
+.save-toast-copy strong { font-size:12px; }
+.save-toast-copy small { color:#627267; font:9px/1.4 var(--mono); }
+.save-toast-close { display:grid; flex:none; place-items:center; width:30px; height:30px; border:0; border-radius:5px; background:transparent; color:#536359; font-size:20px; cursor:pointer; }
+.save-toast-close:hover { background:#e3ede1; }
 @keyframes dialog-in { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
 .skeleton { min-height:20px; border-radius:4px; background:linear-gradient(90deg,#e7e7de 25%,#efefe9 50%,#e7e7de 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; }
 @keyframes shimmer { to { background-position:-200% 0; } }
@@ -456,6 +468,7 @@ h1 { margin:0; font:700 clamp(32px, 4vw, 48px)/1.08 var(--display); letter-spaci
 .bulk-delete-status.is-failed { background:var(--red-wash); color:#8d3c30; }
 .bulk-delete-status.is-not_attempted { background:#eeeee8; color:#70786f; }
 @media (max-width:620px) {
+  .save-toast { right:14px; bottom:calc(14px + env(safe-area-inset-bottom)); max-width:calc(100vw - 28px); }
   .dialog-backdrop { align-items:end; padding:12px; }
   .inventory-dialog { width:100%; max-height:90dvh; padding:22px 18px; border-radius:12px 12px 8px 8px; }
   .inventory-dialog h2 { font-size:21px; }

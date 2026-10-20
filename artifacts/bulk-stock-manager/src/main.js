@@ -2,6 +2,7 @@ import './index.css';
 
 const root = document.querySelector('#app');
 let previewExpiryTimer;
+let feedbackDismissTimer;
 let productSearchTimer;
 let productSearchGeneration = 0;
 let productVariantGeneration = 0;
@@ -18,6 +19,7 @@ const state = {
   busy: '',
   confirmed: false,
   productSearch: '',
+  productSearchSearched: '',
   products: [],
   productCursor: null,
   productHasNextPage: false,
@@ -59,6 +61,25 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[char]));
 
+function clearApplyFeedback() {
+  clearTimeout(feedbackDismissTimer);
+  feedbackDismissTimer = undefined;
+  state.applyFeedback = null;
+}
+
+function setApplyFeedback(feedback) {
+  clearApplyFeedback();
+  state.applyFeedback = feedback;
+  if (feedback.kind === 'success') {
+    feedbackDismissTimer = setTimeout(() => {
+      if (state.applyFeedback === feedback) {
+        clearApplyFeedback();
+        render();
+      }
+    }, 2800);
+  }
+}
+
 async function request(path, options = {}) {
   const response = await fetch(path, {
     credentials: 'same-origin',
@@ -92,7 +113,7 @@ function clearOperation() {
   state.confirmed = false;
   state.previewSource = '';
   state.applyDialogOpen = false;
-  state.applyFeedback = null;
+  clearApplyFeedback();
   state.pendingProductPreviews = [];
 }
 
@@ -101,6 +122,7 @@ function clearProductSection() {
   productSearchGeneration += 1;
   productVariantGeneration += 1;
   state.productSearch = '';
+  state.productSearchSearched = '';
   state.activeSection = 'orders';
   state.products = [];
   state.productCursor = null;
@@ -430,6 +452,17 @@ function inventoryDialog() {
 
   if (state.applyFeedback) {
     const feedback = state.applyFeedback;
+    if (feedback.kind === 'success') {
+      const summary = feedback.summary || {};
+      const detail = feedback.summary
+        ? `${summary.successfulUpdates ?? 0} updated · ${summary.failedUpdates ?? 0} failed${Number(summary.skippedItems) ? ` · ${summary.skippedItems} skipped` : ''}`
+        : 'Shopify confirmed the changes.';
+      return `<div class="save-toast" role="status" aria-live="polite" data-save-toast>
+        <span class="save-toast-icon" aria-hidden="true">✓</span>
+        <span class="save-toast-copy"><strong>Done</strong><small>${esc(detail)}</small></span>
+        <button type="button" class="save-toast-close" data-action="dismiss-apply-feedback" aria-label="Dismiss confirmation">×</button>
+      </div>`;
+    }
     const complete = feedback.kind === 'success';
     const summary = feedback.summary || {};
     return `<div class="dialog-backdrop" data-dialog-backdrop>
@@ -483,6 +516,7 @@ function productStockChanges() {
 function productSection() {
   const searching = state.productBusy === 'search';
   const productResults = state.selectedCollectionId ? [] : state.products;
+  const hasSearchedCurrentQuery = state.productSearchSearched === state.productSearch.trim();
   const stockChanges = productStockChanges();
   return `<section class="panel product-panel" aria-labelledby="product-panel-title">
     <div class="panel-topline">
@@ -494,10 +528,10 @@ function productSection() {
       <input class="field-control" id="product-search" type="search" maxlength="80" autocomplete="off" value="${esc(state.productSearch)}" placeholder="For example, Ralph Lauren slides" ${state.busy ? 'disabled' : ''} aria-label="Search Shopify products by name">
       <button class="btn btn-secondary" type="button" data-action="search-products" ${searching || state.busy || state.productSearch.trim().length < 2 ? 'disabled' : ''}>${searching ? 'Searching…' : 'Search'}</button>
     </div>
-    <p class="product-search-hint">${state.productError && !state.selectedCollectionId ? `<span role="alert" class="product-error">${esc(state.productError)}</span>` : state.productSearch.trim().length < 2 ? 'Search products by name, or browse every Shopify collection below.' : `${productResults.length} matching product${productResults.length === 1 ? '' : 's'} shown.`}</p>
+    <p class="product-search-hint">${state.productError && !state.selectedCollectionId ? `<span role="alert" class="product-error">${esc(state.productError)}</span>` : state.productSearch.trim().length < 2 ? 'Search products by name, or browse every Shopify collection below.' : searching ? 'Searching Shopify…' : hasSearchedCurrentQuery ? `${productResults.length} matching product${productResults.length === 1 ? '' : 's'} shown.` : 'Click Search to load matching products.'}</p>
     ${productResults.length ? `<div class="product-results" data-preserve-scroll="product-search-results" aria-label="Matching Shopify products">
       ${productResults.map(productCard).join('')}
-    </div>` : searching ? '<p class="product-empty">Searching Shopify…</p>' : state.productSearch.trim().length >= 2 && !state.productError ? '<p class="product-empty">No products found. Try another part of the product name.</p>' : ''}
+    </div>` : searching ? '<p class="product-empty">Searching Shopify…</p>' : hasSearchedCurrentQuery && state.productSearch.trim().length >= 2 && !state.productError ? '<p class="product-empty">No products found. Try another part of the product name.</p>' : ''}
     ${state.productHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
     ${collectionBrowser()}
     ${productDeletionPanel()}
@@ -506,7 +540,7 @@ function productSection() {
         ${catalogImage(state.productFeaturedImage, state.productTitle, 'large')}
          <div><p class="eyebrow">Sizes and stock status</p><h3>${esc(state.productTitle)}</h3><p>${esc(state.productStatus)}</p></div>
       </div>
-        <button class="product-refresh" type="button" data-action="refresh-product" ${state.productBusy || state.busy ? 'disabled' : ''}>Refresh</button>
+        <button class="product-refresh" type="button" data-action="refresh-product" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'refresh-after-save' ? 'Refreshing…' : 'Refresh'}</button>
       </div>
       ${state.productBusy === 'variants' ? '<p class="product-empty">Loading live Shopify sizes…</p>' : ''}
       ${state.productVariants.length ? `<div class="product-size-list">${state.productVariants.map((variant) => {
@@ -514,7 +548,7 @@ function productSection() {
         const desiredAction = state.productStockDraft[variant.id] || '';
         const desiredInStock = desiredAction === 'in_stock';
         const pending = desiredAction && desiredAction !== productActionForVariant(variant);
-        const disabled = !variant.inventoryItemId || Boolean(state.busy);
+        const disabled = !variant.inventoryItemId || Boolean(state.busy || state.productBusy);
         return `<label class="product-size-row${disabled ? ' is-disabled' : ''}${pending ? ' has-pending-change' : ''}">
           <input type="checkbox" role="switch" data-product-stock-toggle="${esc(variant.id)}" ${desiredInStock ? 'checked' : ''} ${disabled || !desiredAction ? 'disabled' : ''} aria-label="Set ${esc(variant.title)} ${desiredInStock ? 'in stock' : 'sold out'}">
           <span class="product-size-copy"><strong>${esc(variant.title)}</strong><small>${variant.sku ? `SKU ${esc(variant.sku)}` : variant.inventoryItemId ? 'No SKU' : 'No inventory item'}</small></span>
@@ -526,7 +560,7 @@ function productSection() {
       ${state.productVariants.some((variant) => !variant.inventoryItemId) ? '<p class="product-search-hint">Sizes without an inventory item cannot be changed.</p>' : ''}
       ${state.productVariants.length ? `<div class="product-stock-actions">
         <span class="selection-count">${stockChanges.length > 25 ? 'Save up to 25 changed sizes at once' : stockChanges.length ? `${stockChanges.length} unsaved size${stockChanges.length === 1 ? '' : 's'}` : 'Choose In Stock or Sold Out for each size'}</span>
-        <button class="btn btn-primary" type="button" data-action="save-product-stock" ${!stockChanges.length || stockChanges.length > 25 || state.busy || state.productBusy ? 'disabled' : ''}>${state.busy === 'product-preview' ? 'Preparing…' : 'Save changes'}</button>
+        <button class="btn btn-primary" type="button" data-action="save-product-stock" ${!stockChanges.length || stockChanges.length > 25 || state.busy || state.productBusy ? 'disabled' : ''}>${state.busy === 'product-preview' ? 'Reviewing…' : state.busy === 'apply' ? 'Saving…' : 'Save changes'}</button>
       </div>
       <p class="product-safety-note">In Stock turns tracking off. Sold Out sets available quantity to 0 at active stocked locations. Save shows a short confirmation before changes are sent to Shopify.</p>` : ''}
       ${state.stockSaveError ? `<p class="product-save-error" role="alert">${esc(state.stockSaveError)}</p>` : ''}
@@ -635,7 +669,7 @@ function render() {
       .find((button) => button.dataset.section === focusedSection)
       ?.focus({ preventScroll: true });
   }
-  if (!dialogWasOpen && (state.applyDialogOpen || state.applyFeedback)) {
+  if (!dialogWasOpen && (state.applyDialogOpen || (state.applyFeedback && state.applyFeedback.kind !== 'success'))) {
     root.querySelector('[data-dialog-primary]')?.focus({ preventScroll: true });
   }
 }
@@ -700,6 +734,7 @@ async function searchProducts(after = null, generation = ++productSearchGenerati
   if (search.length < 2 || state.busy) return;
   state.productBusy = after ? 'more-products' : 'search';
   state.productError = '';
+  state.productSearchSearched = search;
   if (!after) {
     state.products = [];
     state.productCursor = null;
@@ -928,7 +963,7 @@ async function saveProductStockChanges() {
   const actions = ['in_stock', 'sold_out'].filter((action) => changes.some((item) => item.action === action));
   state.pendingProductPreviews = [];
   state.applyDialogOpen = false;
-  state.applyFeedback = null;
+  clearApplyFeedback();
   state.stockSaveError = '';
   state.busy = 'product-preview';
   render();
@@ -972,7 +1007,7 @@ async function applyProductStockChanges() {
   }
 
   state.applyDialogOpen = false;
-  state.applyFeedback = null;
+  clearApplyFeedback();
   state.busy = 'apply';
   state.stockSaveError = '';
   render();
@@ -995,7 +1030,7 @@ async function applyProductStockChanges() {
       for (const key of Object.keys(summary)) summary[key] += Number(resultSummary[key]);
     }
     const hasFailures = summary.failedUpdates > 0;
-    state.applyFeedback = {
+    setApplyFeedback({
       kind: hasFailures ? 'error' : 'success',
       context: 'product',
       title: hasFailures ? 'Some sizes need attention' : 'Changes saved',
@@ -1003,34 +1038,27 @@ async function applyProductStockChanges() {
         ? 'Shopify reported failed or unverified sizes. Refresh and check the product before trying again.'
         : 'Shopify confirmed the requested size changes.',
       summary,
-    };
+    });
     state.pendingProductPreviews = [];
-    try {
-      await refreshProductAvailability();
-    } catch (error) {
-      state.stockSaveError = `Changes were sent, but the size list could not refresh: ${error.message || 'Use Refresh before making more changes.'}`;
-    }
+    scheduleProductRefreshAfterSave();
   } catch (error) {
     state.pendingProductPreviews = [];
     state.stockSaveError = `${error.message || 'Shopify could not confirm the stock changes.'} Refresh stock before retrying; no automatic retry was sent.`;
-    state.applyFeedback = {
+    setApplyFeedback({
       kind: 'error',
       context: 'product',
       title: applyAttempted ? 'Changes may need checking' : 'Changes could not be confirmed',
       message: state.stockSaveError,
       ...(responsesReceived ? { summary } : {}),
-    };
-    if (applyAttempted) {
-      try { await refreshProductAvailability(); } catch { /* Keep the explicit refresh guidance above. */ }
-    }
+    });
+    if (applyAttempted) scheduleProductRefreshAfterSave();
   } finally {
     state.busy = '';
     render();
   }
 }
 
-async function refreshProductAvailability() {
-  const productId = state.productId;
+async function refreshProductAvailability(productId = state.productId) {
   const visibleCount = Math.max(1, state.productVariants.length);
   const variants = [];
   let after = null;
@@ -1051,6 +1079,23 @@ async function refreshProductAvailability() {
   state.variantHasNextPage = lastPage.hasNextPage;
 }
 
+function scheduleProductRefreshAfterSave() {
+  const productId = state.productId;
+  state.productBusy = 'refresh-after-save';
+  refreshProductAvailability(productId)
+    .catch((error) => {
+      if (state.productId === productId) {
+        state.stockSaveError = `Stock result is saved, but the size list could not refresh: ${error.message || 'Use Refresh to reload it.'}`;
+      }
+    })
+    .finally(() => {
+      if (state.productId === productId && state.productBusy === 'refresh-after-save') {
+        state.productBusy = '';
+        render();
+      }
+    });
+}
+
 async function applyChanges() {
   if (!state.preview?.previewId || !state.confirmed || state.busy) return;
   if ((state.preview.blockingIssues || []).length) return;
@@ -1063,7 +1108,7 @@ async function applyChanges() {
   const eligible = state.preview.variants.filter((item) => item.eligible);
   if (!eligible.length) return;
   state.applyDialogOpen = false;
-  state.applyFeedback = null;
+  clearApplyFeedback();
   state.busy = 'apply';
   state.error = '';
   render();
@@ -1078,21 +1123,21 @@ async function applyChanges() {
       !summary || !['successfulUpdates', 'failedUpdates', 'skippedItems'].every((key) => Number.isFinite(Number(summary[key])))) {
       state.applyResult = null;
       state.error = 'The apply response was incomplete. Refresh inventory before continuing.';
-      state.applyFeedback = {
+      setApplyFeedback({
         kind: 'error',
         title: 'Shopify returned an incomplete result',
         message: 'The response could not confirm every variant. Refresh Shopify inventory and review the results before retrying.',
-      };
+      });
     } else {
       const hasFailures = Number(summary.failedUpdates) > 0;
-      state.applyFeedback = {
+      setApplyFeedback({
         kind: hasFailures ? 'error' : 'success',
         title: hasFailures ? 'Some updates need attention' : 'Your changes are complete',
         message: hasFailures
           ? 'Shopify reported failed or unverified changes. Check each variant and location below before trying again.'
           : 'Shopify confirmed the requested changes. You can review the exact variant and location results below.',
         summary,
-      };
+      });
       if (state.previewSource === 'product' && state.productId) {
         try {
           await refreshProductAvailability();
@@ -1105,11 +1150,11 @@ async function applyChanges() {
     state.error = error.message || 'The inventory update could not be completed.';
     state.preview = null;
     state.confirmed = false;
-    state.applyFeedback = {
+    setApplyFeedback({
       kind: 'error',
       title: 'The update could not be confirmed',
       message: `${state.error} Check Shopify and refresh the preview before trying again.`,
-    };
+    });
     clearTimeout(previewExpiryTimer);
   } finally {
     state.busy = '';
@@ -1206,6 +1251,7 @@ root.addEventListener('input', (event) => {
   }
   if (event.target.id === 'product-search') {
     state.productSearch = event.target.value;
+    state.productSearchSearched = '';
     clearOperation();
     clearSelectedProduct();
     state.selectedCollectionId = '';
@@ -1214,7 +1260,7 @@ root.addEventListener('input', (event) => {
     state.collectionProductCursor = null;
     state.collectionProductsHasNextPage = false;
     clearTimeout(productSearchTimer);
-    const generation = ++productSearchGeneration;
+    productSearchGeneration += 1;
     state.productError = '';
     if (state.productSearch.trim().length < 2) {
       state.products = [];
@@ -1227,9 +1273,8 @@ root.addEventListener('input', (event) => {
     state.products = [];
     state.productCursor = null;
     state.productHasNextPage = false;
-    state.productBusy = 'search';
+    state.productBusy = '';
     render();
-    productSearchTimer = setTimeout(() => searchProducts(null, generation), 350);
   }
 });
 
@@ -1273,7 +1318,7 @@ root.addEventListener('change', (event) => {
     };
     state.pendingProductPreviews = [];
     state.applyDialogOpen = false;
-    state.applyFeedback = null;
+    clearApplyFeedback();
     state.stockSaveError = '';
     render();
   }
@@ -1283,11 +1328,11 @@ root.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && (state.applyDialogOpen || state.applyFeedback)) {
     event.preventDefault();
     if (state.applyDialogOpen) state.applyDialogOpen = false;
-    else state.applyFeedback = null;
+    else clearApplyFeedback();
     render();
     return;
   }
-  if (event.key === 'Tab' && (state.applyDialogOpen || state.applyFeedback)) {
+  if (event.key === 'Tab' && (state.applyDialogOpen || (state.applyFeedback && state.applyFeedback.kind !== 'success'))) {
     const dialog = root.querySelector('[data-inventory-dialog]');
     const focusable = [...(dialog?.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
     if (focusable.length) {
@@ -1312,7 +1357,7 @@ root.addEventListener('keydown', (event) => {
 root.addEventListener('click', async (event) => {
   if (event.target.matches('[data-dialog-backdrop]')) {
     if (state.applyDialogOpen) state.applyDialogOpen = false;
-    else state.applyFeedback = null;
+    else clearApplyFeedback();
     render();
     return;
   }
@@ -1361,7 +1406,7 @@ root.addEventListener('click', async (event) => {
   }
   if (action === 'dismiss-apply-feedback') {
     const productResult = state.applyFeedback?.context === 'product';
-    state.applyFeedback = null;
+    clearApplyFeedback();
     render();
     if (!productResult) root.querySelector('[data-testid="status-apply-complete"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -1382,6 +1427,7 @@ root.addEventListener('click', async (event) => {
     clearOperation();
     clearSelectedProduct();
     state.productSearch = '';
+    state.productSearchSearched = '';
     state.products = [];
     state.productCursor = null;
     state.productHasNextPage = false;
