@@ -57,6 +57,26 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .topbar-action { border:0; background:none; color:var(--muted); font-size:12px; padding:8px 0 8px 12px; }
 .topbar-action:hover { color:var(--ink); }
 
+.section-nav {
+  display:flex; width:fit-content; max-width:100%; gap:7px; margin:0 0 28px; padding:5px;
+  border:1px solid var(--line); border-radius:8px; background:#ebe9df;
+}
+.section-nav-button {
+  display:flex; min-width:230px; align-items:center; gap:11px; padding:10px 14px;
+  border:1px solid transparent; border-radius:5px; background:transparent; color:var(--muted);
+  text-align:left; transition:background .16s,border-color .16s,color .16s;
+}
+.section-nav-button:hover:not(.is-active) { background:#f4f3ec; color:var(--ink); }
+.section-nav-button.is-active {
+  border-color:var(--line); background:var(--surface); color:var(--pine-dark);
+  box-shadow:0 1px 4px #202a2910;
+}
+.section-nav-number { color:#899188; font:10px var(--mono); }
+.section-nav-copy { display:grid; gap:3px; }
+.section-nav-copy strong { font:700 12px var(--display); }
+.section-nav-copy small { color:var(--muted); font-size:10px; line-height:1.35; }
+.section-view { min-width:0; }
+
 .main { width:min(1120px, calc(100% - 48px)); margin:0 auto; padding:54px 0 84px; }
 .eyebrow { margin:0 0 12px; color:var(--pine); font:500 11px var(--mono); letter-spacing:.12em; text-transform:uppercase; }
 .page-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:35px; }
@@ -385,6 +405,9 @@ h1 { margin:0; font:700 clamp(32px, 4vw, 48px)/1.08 var(--display); letter-spaci
 .bulk-delete-status.is-not_attempted { background:#eeeee8; color:#70786f; }
 @media (max-width:620px) {
   .main { width:min(1120px,calc(100% - 24px)); padding:26px 0 44px; }
+  .section-nav { width:100%; margin-bottom:22px; }
+  .section-nav-button { flex:1; min-width:0; gap:8px; padding:10px 9px; }
+  .section-nav-copy small { font-size:9px; }
   .product-panel { padding:18px 14px; }
   .product-panel .panel-topline { align-items:flex-start; gap:10px; }
   .product-panel .index-label { max-width:92px; text-align:right; line-height:1.4; }
@@ -418,6 +441,7 @@ h1 { margin:0; font:700 clamp(32px, 4vw, 48px)/1.08 var(--display); letter-spaci
 
 @media (max-width:380px) {
   .main { width:calc(100% - 20px); }
+  .section-nav-number { display:none; }
   .product-panel { padding:16px 11px; }
   .product-search-hint { font-size:10px; }
   .product-size-row { grid-template-columns:20px minmax(0,1fr); gap:7px; }

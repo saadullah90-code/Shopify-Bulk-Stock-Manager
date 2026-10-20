@@ -1083,6 +1083,14 @@ root.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const action = button.dataset.action;
+  if (action === 'switch-section' && ['orders', 'collections'].includes(button.dataset.section)) {
+    state.activeSection = button.dataset.section;
+    if (state.activeSection === 'collections' && !state.collectionsLoaded && !state.productBusy) {
+      await loadCollections();
+    } else {
+      render();
+    }
+  }
   if (action === 'review-product-delete' && state.selectedDeleteProducts.length && !state.busy) {
     state.deleteReviewOpen = true;
     state.deleteConfirmed = false;
@@ -1129,6 +1137,7 @@ root.addEventListener('click', async (event) => {
     state.collectionProducts = [];
     state.collectionProductCursor = null;
     state.collectionProductsHasNextPage = false;
+    delete state.scrollPositions['collection-products'];
     await loadCollectionProducts();
   }
   if (action === 'load-more-collection-products' && state.collectionProductCursor) {
