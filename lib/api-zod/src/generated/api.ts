@@ -143,6 +143,34 @@ export const GetShopifyCollectionProductsResponse = zod.object({
 
 
 /**
+ * @summary Permanently delete explicitly confirmed Shopify products
+ */
+export const deleteShopifyProductsBodyProductIdsItemRegExp = new RegExp('^gid://shopify/Product/[0-9]+$');
+export const deleteShopifyProductsBodyProductIdsMax = 50;
+
+
+
+export const DeleteShopifyProductsBody = zod.object({
+  "productIds": zod.array(zod.string().regex(deleteShopifyProductsBodyProductIdsItemRegExp)).min(1).max(deleteShopifyProductsBodyProductIdsMax),
+  "confirmed": zod.boolean()
+})
+
+export const DeleteShopifyProductsResponse = zod.object({
+  "results": zod.array(zod.object({
+  "productId": zod.string(),
+  "status": zod.enum(['deleted', 'failed', 'not_attempted']),
+  "message": zod.string().nullable()
+})),
+  "summary": zod.object({
+  "requested": zod.number().int(),
+  "deleted": zod.number().int(),
+  "failed": zod.number().int(),
+  "notAttempted": zod.number().int()
+})
+})
+
+
+/**
  * @summary Read all sizes and live availability for a product
  */
 export const getShopifyProductVariantsQueryProductIdRegExp = new RegExp('^gid://shopify/Product/[0-9]+$');

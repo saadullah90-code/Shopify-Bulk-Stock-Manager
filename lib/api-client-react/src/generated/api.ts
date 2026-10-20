@@ -33,6 +33,8 @@ import type {
   LoginInput,
   PreviewInput,
   PreviewResponse,
+  ProductDeletionInput,
+  ProductDeletionResponse,
   ProductSearchResponse,
   ProductStockSelection,
   ProductVariantsResponse,
@@ -712,6 +714,94 @@ export function useGetShopifyCollectionProducts<TData = Awaited<ReturnType<typeo
 
 
 
+
+export const getDeleteShopifyProductsUrl = () => {
+
+
+
+
+  return `/api/shopify/products/delete`
+}
+
+/**
+ * @summary Permanently delete explicitly confirmed Shopify products
+ */
+export const deleteShopifyProducts = async (productDeletionInput: ProductDeletionInput, options?: Parameters<typeof customFetch>[1]): Promise<ProductDeletionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProductDeletionResponse>(getDeleteShopifyProductsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(productDeletionInput)
+  }
+);}
+
+
+
+
+
+export const getDeleteShopifyProductsMutationKey = () => ['deleteShopifyProducts'] as const;
+
+export const getDeleteShopifyProductsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteShopifyProducts>>, TError,DeleteShopifyProductsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteShopifyProducts>>, TError,DeleteShopifyProductsMutationVariables, TContext> => {
+
+const mutationKey = getDeleteShopifyProductsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteShopifyProducts>>, DeleteShopifyProductsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  deleteShopifyProducts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteShopifyProductsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteShopifyProducts>>>
+    export type DeleteShopifyProductsMutationBody = BodyType<ProductDeletionInput>
+    export type DeleteShopifyProductsMutationError = ErrorType<ErrorResponse>
+    export type DeleteShopifyProductsMutationVariables = {data: BodyType<ProductDeletionInput>}
+
+    /**
+ * @summary Permanently delete explicitly confirmed Shopify products
+ */
+export const useDeleteShopifyProducts = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteShopifyProducts>>, TError,DeleteShopifyProductsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteShopifyProducts>>,
+        TError,
+        DeleteShopifyProductsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteShopifyProductsMutationOptions(options));
+    }
 
 export const getGetShopifyProductVariantsUrl = (params: GetShopifyProductVariantsParams,) => {
   const normalizedParams = new URLSearchParams();

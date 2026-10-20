@@ -76,6 +76,44 @@ export interface CollectionProductsResponse {
   endCursor: string | null;
 }
 
+export interface ProductDeletionInput {
+  /**
+     * @minItems 1
+     * @maxItems 50
+     * @items.pattern ^gid://shopify/Product/[0-9]+$
+     */
+  productIds: string[];
+  confirmed: boolean;
+}
+
+export type ProductDeletionResultStatus = typeof ProductDeletionResultStatus[keyof typeof ProductDeletionResultStatus];
+
+
+export const ProductDeletionResultStatus = {
+  deleted: 'deleted',
+  failed: 'failed',
+  not_attempted: 'not_attempted',
+} as const;
+
+export interface ProductDeletionResult {
+  productId: string;
+  status: ProductDeletionResultStatus;
+  /** @nullable */
+  message: string | null;
+}
+
+export interface ProductDeletionSummary {
+  requested: number;
+  deleted: number;
+  failed: number;
+  notAttempted: number;
+}
+
+export interface ProductDeletionResponse {
+  results: ProductDeletionResult[];
+  summary: ProductDeletionSummary;
+}
+
 export interface ProductSize {
   id: string;
   title: string;

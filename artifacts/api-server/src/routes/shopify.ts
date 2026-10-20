@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
-  ApplyChangesBody, ApplyChangesResponse, GetLocationsResponse,
+  ApplyChangesBody, ApplyChangesResponse, DeleteShopifyProductsBody,
+  DeleteShopifyProductsResponse, GetLocationsResponse,
   GetShopifyCollectionProductsResponse, GetShopifyCollectionsQueryParams,
   GetShopifyCollectionsResponse, getShopifyCollectionProductsQueryCollectionIdRegExp,
   getShopifyProductVariantsQueryProductIdRegExp, GetShopifyProductVariantsResponse,
@@ -13,8 +14,8 @@ import { getAppSession, hasSameOrigin } from "../lib/app-session";
 import { ShopifyApiError, assertShopifyPermissions } from "../lib/shopify-client";
 import {
   applyStockVariant, buildProductStockPreview, buildStockPreview, discoverLocations,
-  parseOrders, readShopifyCollectionProducts, readShopifyCollections, readShopifyProductVariants,
-  searchShopifyProducts, stockSummary,
+  parseOrders, permanentlyDeleteShopifyProducts, readShopifyCollectionProducts,
+  readShopifyCollections, readShopifyProductVariants, searchShopifyProducts, stockSummary,
 } from "../lib/stock-manager";
 
 const router: IRouter = Router();
@@ -115,6 +116,19 @@ router.get("/shopify/collection-products", async (req, res): Promise<void> => {
       return;
     }
     res.json(GetShopifyCollectionProductsResponse.parse(result));
+  } catch (error) { failure(req, res, error); }
+});
+
+router.post("/shopify/products/delete", async (req, res): Promise<void> => {
+  if (!session(req, res, true)) return;
+  const parsed = DeleteShopifyProductsBody.safeParse(req.body);
+  if (!parsed.success || parsed.data.confirmed !== true) {
+    res.status(400).json({ error: "Select products and confirm that you want to permanently delete them." });
+    return;
+  }
+  try {
+    const result = await permanentlyDeleteShopifyProducts(parsed.data.productIds);
+    res.json(DeleteShopifyProductsResponse.parse(result));
   } catch (error) { failure(req, res, error); }
 });
 

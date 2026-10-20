@@ -40,6 +40,12 @@ const state = {
   variantHasNextPage: false,
   selectedVariantIds: [],
   previewSource: '',
+  selectedDeleteProducts: [],
+  deleteReviewOpen: false,
+  deleteConfirmed: false,
+  deleteError: '',
+  deleteResults: [],
+  deleteSummary: null,
 };
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -107,6 +113,12 @@ function clearProductSection() {
   state.variantCursor = null;
   state.variantHasNextPage = false;
   state.selectedVariantIds = [];
+  state.selectedDeleteProducts = [];
+  state.deleteReviewOpen = false;
+  state.deleteConfirmed = false;
+  state.deleteError = '';
+  state.deleteResults = [];
+  state.deleteSummary = null;
 }
 
 function clearSelectedProduct() {
@@ -377,6 +389,7 @@ function productSection() {
     </div>` : searching ? '<p class="product-empty">Searching Shopify…</p>' : state.productSearch.trim().length >= 2 && !state.productError ? '<p class="product-empty">No products found. Try another part of the product name.</p>' : ''}
     ${state.productHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
     ${collectionBrowser()}
+    ${productDeletionPanel()}
     ${state.productId ? `<section class="product-detail" aria-label="Selected product variants">
       <div class="product-detail-heading"><div class="product-detail-product">
         ${catalogImage(state.productFeaturedImage, state.productTitle, 'large')}
@@ -627,12 +640,20 @@ function catalogImage(image, title, size = 'small') {
     : `<span class="catalog-image-placeholder catalog-image-placeholder-${size}" role="img" aria-label="No product image"><span>No image</span></span>`;
 }
 
-function productCard(product) {
-  return `<button class="product-result product-result-with-image" type="button" data-action="open-product" data-product-id="${esc(product.id)}" data-product-title="${esc(product.title)}" ${state.productBusy || state.busy ? 'disabled' : ''}>
+function productCard(product, { selectable = false } = {}) {
+  const openButton = `<button class="product-result product-result-with-image" type="button" data-action="open-product" data-product-id="${esc(product.id)}" data-product-title="${esc(product.title)}" ${state.productBusy || state.busy ? 'disabled' : ''}>
     ${catalogImage(product.featuredImage, product.title)}
     <span class="product-result-copy"><strong>${esc(product.title)}</strong><small>${esc(product.status)}</small></span>
     <span class="arrow" aria-hidden="true">→</span>
   </button>`;
+  if (!selectable) return openButton;
+  const checked = state.selectedDeleteProducts.some((item) => item.id === product.id);
+  return `<div class="collection-product-row">
+    <label class="collection-product-select">
+      <input type="checkbox" data-delete-product-selection="${esc(product.id)}" ${checked ? 'checked' : ''} ${state.productBusy || state.busy ? 'disabled' : ''} aria-label="Select ${esc(product.title)} for permanent deletion">
+    </label>
+    ${openButton}
+  </div>`;
 }
 
 function collectionBrowser() {
@@ -648,8 +669,49 @@ function collectionBrowser() {
     ${state.selectedCollectionId ? `<div class="collection-products">
       <div class="collection-products-heading"><h4>${esc(state.selectedCollectionTitle || 'Collection products')}</h4><span>${state.collectionProducts.length} shown</span></div>
       ${state.productBusy === 'collection-products' ? '<p class="product-empty">Loading collection products…</p>' : ''}
-      ${state.collectionProducts.length ? `<div class="product-results">${state.collectionProducts.map(productCard).join('')}</div>` : state.productBusy === 'collection-products' ? '' : state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : '<p class="product-empty">No products are in this collection.</p>'}
+      ${state.collectionProducts.length ? `<div class="product-results" aria-label="Products in this collection">${state.collectionProducts.map((product) => productCard(product, { selectable: true })).join('')}</div>` : state.productBusy === 'collection-products' ? '' : state.productError ? `<p class="product-search-hint"><span role="alert" class="product-error">${esc(state.productError)}</span></p>` : '<p class="product-empty">No products are in this collection.</p>'}
       ${state.collectionProductsHasNextPage ? `<div class="product-more"><button class="btn btn-secondary" type="button" data-action="load-more-collection-products" ${state.productBusy || state.busy ? 'disabled' : ''}>${state.productBusy === 'more-collection-products' ? 'Loading…' : 'Load more products'}</button></div>` : ''}
+    </div>` : ''}
+  </section>`;
+}
+
+function productDeletionPanel() {
+  const selected = state.selectedDeleteProducts;
+  if (!selected.length && !state.deleteResults.length && !state.deleteError) return '';
+  const results = state.deleteResults;
+  return `<section class="bulk-delete-panel" aria-labelledby="bulk-delete-title">
+    <div class="bulk-delete-heading">
+      <div><p class="eyebrow">Shopify catalog</p><h3 id="bulk-delete-title">${selected.length ? `${selected.length} product${selected.length === 1 ? '' : 's'} selected` : 'Recent deletion results'}</h3></div>
+      ${selected.length ? `<button class="product-refresh" type="button" data-action="clear-product-delete-selection" ${state.busy ? 'disabled' : ''}>Clear selection</button>` : ''}
+    </div>
+    <p class="bulk-delete-hint">Your selection stays checked as you open other collections. Select up to 50 products per batch.</p>
+    ${state.deleteError ? `<p class="bulk-delete-error" role="alert">${esc(state.deleteError)}</p>` : ''}
+    ${selected.length ? state.deleteReviewOpen ? `<div class="bulk-delete-review">
+      <p class="bulk-delete-warning">Permanent action: these products and their variants will be deleted from Shopify and cannot be restored here. Check the exact list before continuing.</p>
+      <div class="bulk-delete-list" aria-label="Products that will be permanently deleted">
+        ${selected.map((item) => `<div class="bulk-delete-item">
+          ${catalogImage(item.featuredImage, item.title)}
+          <span>${esc(item.title)}</span>
+        </div>`).join('')}
+      </div>
+      <label class="bulk-delete-confirm">
+        <input id="confirm-product-deletion" type="checkbox" ${state.deleteConfirmed ? 'checked' : ''} ${state.busy ? 'disabled' : ''}>
+        <span>I have reviewed these ${selected.length} products and understand this deletion cannot be undone.</span>
+      </label>
+      <div class="bulk-delete-actions">
+        <button class="btn btn-secondary" type="button" data-action="cancel-product-delete-review" ${state.busy ? 'disabled' : ''}>Keep selecting</button>
+        <button class="btn btn-danger" type="button" data-action="confirm-product-delete" ${!state.deleteConfirmed || state.busy ? 'disabled' : ''}>${state.busy === 'product-delete' ? 'Deleting…' : `Permanently delete ${selected.length} product${selected.length === 1 ? '' : 's'}`}</button>
+      </div>
+    </div>` : `<div class="bulk-delete-actions">
+      <button class="btn btn-danger" type="button" data-action="review-product-delete" ${state.busy ? 'disabled' : ''}>Review permanent deletion</button>
+    </div>` : ''}
+    ${results.length ? `<div class="bulk-delete-results" aria-live="polite">
+      <h4>Deletion results${state.deleteSummary ? ` · ${state.deleteSummary.deleted} deleted, ${state.deleteSummary.failed} failed, ${state.deleteSummary.notAttempted} not attempted` : ''}</h4>
+      ${results.map((item) => `<div class="bulk-delete-result">
+        <strong>${esc(item.title)}</strong>
+        <span class="bulk-delete-status is-${esc(item.status)}">${item.status === 'not_attempted' ? 'Not attempted' : item.status === 'deleted' ? 'Deleted' : 'Failed'}</span>
+        ${item.message ? `<p>${esc(item.message)}</p>` : ''}
+      </div>`).join('')}
     </div>` : ''}
   </section>`;
 }
@@ -786,6 +848,54 @@ async function applyChanges() {
   }
 }
 
+async function deleteSelectedProducts() {
+  if (!state.deleteConfirmed || !state.selectedDeleteProducts.length || state.busy) return;
+  const selected = [...state.selectedDeleteProducts];
+  const selectedById = new Map(selected.map((item) => [item.id, item]));
+  state.busy = 'product-delete';
+  state.deleteError = '';
+  state.deleteResults = [];
+  state.deleteSummary = null;
+  clearOperation();
+  render();
+  let refreshCollection = false;
+  try {
+    const response = await request('/api/shopify/products/delete', {
+      method: 'POST',
+      body: JSON.stringify({ productIds: selected.map((item) => item.id), confirmed: true }),
+    });
+    if (!Array.isArray(response?.results) || !response?.summary) {
+      throw new Error('Shopify returned an incomplete deletion result.');
+    }
+    state.deleteResults = response.results.map((result) => ({
+      ...result,
+      title: selectedById.get(result.productId)?.title || 'Selected Shopify product',
+    }));
+    state.deleteSummary = response.summary;
+    const deletedIds = new Set(response.results
+      .filter((result) => result.status === 'deleted')
+      .map((result) => result.productId));
+    state.selectedDeleteProducts = state.selectedDeleteProducts.filter((item) => !deletedIds.has(item.id));
+    state.collectionProducts = state.collectionProducts.filter((product) => !deletedIds.has(product.id));
+    state.products = state.products.filter((product) => !deletedIds.has(product.id));
+    if (deletedIds.has(state.productId)) clearSelectedProduct();
+    state.deleteReviewOpen = false;
+    state.deleteConfirmed = false;
+    if (response.summary.failed || response.summary.notAttempted) {
+      state.deleteError = 'Some products were not confirmed deleted. Check each result below and refresh Shopify before retrying uncertain items.';
+    }
+    refreshCollection = deletedIds.size > 0 && Boolean(state.selectedCollectionId);
+  } catch (error) {
+    state.deleteError = `${error.message || 'Shopify could not confirm the deletion.'} No automatic retry was sent. Refresh Shopify before retrying in case the result is uncertain.`;
+    state.deleteReviewOpen = false;
+    state.deleteConfirmed = false;
+  } finally {
+    state.busy = '';
+    render();
+    if (refreshCollection) await loadCollectionProducts();
+  }
+}
+
 root.addEventListener('submit', async (event) => {
   if (event.target.id !== 'login-form') return;
   event.preventDefault();
@@ -864,6 +974,28 @@ root.addEventListener('change', (event) => {
     state.confirmed = target.checked;
     const applyButton = root.querySelector('[data-action="apply"]');
     if (applyButton) applyButton.disabled = (state.preview?.blockingIssues || []).length > 0 || !state.confirmed || !state.preview || state.busy !== '' || !(state.preview.variants || []).some((item) => item.eligible && item.updateStatus !== 'skipped');
+  } else if (target.matches('[data-delete-product-selection]')) {
+    const product = state.collectionProducts.find((item) => item.id === target.dataset.deleteProductSelection);
+    if (target.checked && !state.selectedDeleteProducts.some((item) => item.id === target.dataset.deleteProductSelection)) {
+      if (state.selectedDeleteProducts.length >= 50) {
+        target.checked = false;
+        state.deleteError = 'Select up to 50 products per deletion batch. Delete this batch before selecting more.';
+        render();
+        return;
+      }
+      if (product) state.selectedDeleteProducts = [...state.selectedDeleteProducts, {
+        id: product.id, title: product.title, featuredImage: product.featuredImage,
+      }];
+    } else if (!target.checked) {
+      state.selectedDeleteProducts = state.selectedDeleteProducts.filter((item) => item.id !== target.dataset.deleteProductSelection);
+    }
+    state.deleteReviewOpen = false;
+    state.deleteConfirmed = false;
+    render();
+  } else if (target.id === 'confirm-product-deletion') {
+    state.deleteConfirmed = target.checked;
+    const deleteButton = root.querySelector('[data-action="confirm-product-delete"]');
+    if (deleteButton) deleteButton.disabled = !state.deleteConfirmed || Boolean(state.busy);
   } else if (target.matches('[data-product-variant]')) {
     state.selectedVariantIds = [...root.querySelectorAll('[data-product-variant]:checked')]
       .map((input) => input.dataset.productVariant);
@@ -889,6 +1021,25 @@ root.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const action = button.dataset.action;
+  if (action === 'review-product-delete' && state.selectedDeleteProducts.length && !state.busy) {
+    state.deleteReviewOpen = true;
+    state.deleteConfirmed = false;
+    state.deleteError = '';
+    render();
+  }
+  if (action === 'cancel-product-delete-review') {
+    state.deleteReviewOpen = false;
+    state.deleteConfirmed = false;
+    render();
+  }
+  if (action === 'clear-product-delete-selection' && !state.busy) {
+    state.selectedDeleteProducts = [];
+    state.deleteReviewOpen = false;
+    state.deleteConfirmed = false;
+    state.deleteError = '';
+    render();
+  }
+  if (action === 'confirm-product-delete') await deleteSelectedProducts();
   if (action === 'preview') await preview();
   if (action === 'apply') await applyChanges();
   if (action === 'search-products') {

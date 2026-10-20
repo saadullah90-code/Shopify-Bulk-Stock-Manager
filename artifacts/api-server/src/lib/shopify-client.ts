@@ -177,7 +177,9 @@ export async function shopifyMutation<T>(
   );
 }
 
-export async function assertShopifyPermissions(): Promise<void> {
+export async function assertShopifyPermissions(
+  requiredScopes: readonly string[] = ["read_orders", "read_products", "read_inventory", "write_inventory"],
+): Promise<void> {
   const result = await shopifyGraphql<{
     currentAppInstallation: { accessScopes: Array<{ handle: string }> } | null;
   }>(`query InventoryToolPermissions {
@@ -189,8 +191,7 @@ export async function assertShopifyPermissions(): Promise<void> {
   const granted = new Set(result.currentAppInstallation.accessScopes.map((scope) => scope.handle));
   // Location access is validated by the real field queries, since Shopify
   // supports alternative scopes. An ID-only query is not sufficient.
-  const required = ["read_orders", "read_products", "read_inventory", "write_inventory"];
-  const missing = required.filter((scope) =>
+  const missing = requiredScopes.filter((scope) =>
     !granted.has(scope) && !(scope.startsWith("read_") && granted.has(scope.replace(/^read_/, "write_"))),
   );
   if (missing.length) {

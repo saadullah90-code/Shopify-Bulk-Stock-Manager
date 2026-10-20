@@ -513,6 +513,105 @@ async function setZero(id: string, locationId: string, quantity: number, preview
   }
 }
 
+export interface ProductDeletionResult {
+  productId: string;
+  status: "deleted" | "failed" | "not_attempted";
+  message: string | null;
+}
+
+function productDeletionUserError(errors: Array<{ message: string }> | null | undefined): string | null {
+  if (!errors?.length) return null;
+  const messages = errors.map((error) => error.message).filter(Boolean);
+  if (messages.some((message) => /access denied|permission|scope/i.test(message))) {
+    return "Shopify denied product deletion. Enable the write_products Admin API scope in the existing custom app; update the token privately only if Shopify issues a replacement.";
+  }
+  let message = messages.join("; ") || "Shopify rejected the product deletion.";
+  for (const value of [process.env.SHOPIFY_STORE_DOMAIN, process.env.SHOPIFY_ADMIN_ACCESS_TOKEN]) {
+    if (value?.trim()) message = message.split(value.trim()).join("[redacted]");
+  }
+  return message;
+}
+
+export async function permanentlyDeleteShopifyProducts(productIds: string[]): Promise<{
+  results: ProductDeletionResult[];
+  summary: { requested: number; deleted: number; failed: number; notAttempted: number };
+}> {
+  try {
+    await assertShopifyPermissions(["write_products"]);
+  } catch (error) {
+    if (error instanceof ShopifyApiError) {
+      throw new ShopifyApiError(`No products were deleted. ${error.message}`);
+    }
+    throw error;
+  }
+
+  const results: ProductDeletionResult[] = [];
+  for (let index = 0; index < productIds.length; index += 1) {
+    const productId = productIds[index];
+    try {
+      const data = await shopifyGraphql<{
+        productDelete: {
+          deletedProductId: string | null;
+          userErrors: Array<{ message: string }>;
+        };
+      }>(`mutation PermanentlyDeleteProduct($input: ProductDeleteInput!) {
+        productDelete(input: $input, synchronous: true) {
+          deletedProductId
+          userErrors { message }
+        }
+      }`, { input: { id: productId } }, { readOnly: false });
+
+      const error = productDeletionUserError(data.productDelete.userErrors);
+      if (error) {
+        results.push({ productId, status: "failed", message: error });
+        continue;
+      }
+      if (data.productDelete.deletedProductId !== productId) {
+        results.push({
+          productId,
+          status: "failed",
+          message: "Shopify did not confirm this deletion. Refresh the collection before retrying.",
+        });
+        for (const pendingId of productIds.slice(index + 1)) {
+          results.push({
+            productId: pendingId,
+            status: "not_attempted",
+            message: "Stopped because Shopify did not confirm the previous deletion. Refresh Shopify before retrying.",
+          });
+        }
+        break;
+      }
+      results.push({ productId, status: "deleted", message: null });
+    } catch (error) {
+      results.push({
+        productId,
+        status: "failed",
+        message: error instanceof ShopifyApiError
+          ? `Shopify could not confirm this deletion: ${error.message}`
+          : "Shopify could not confirm this deletion. Refresh Shopify before retrying.",
+      });
+      for (const pendingId of productIds.slice(index + 1)) {
+        results.push({
+          productId: pendingId,
+          status: "not_attempted",
+          message: "Stopped after Shopify could not confirm a deletion. Refresh Shopify before retrying.",
+        });
+      }
+      break;
+    }
+  }
+
+  return {
+    results,
+    summary: {
+      requested: productIds.length,
+      deleted: results.filter((result) => result.status === "deleted").length,
+      failed: results.filter((result) => result.status === "failed").length,
+      notAttempted: results.filter((result) => result.status === "not_attempted").length,
+    },
+  };
+}
+
 export async function applyStockVariant(
   item: VariantResult, action: StockAction, previewId: string,
 ): Promise<VariantResult> {
